@@ -1,19 +1,12 @@
-use std::{fs, time::SystemTime};
+mod file_type;
+mod utilities;
+
+use std::fs;
 
 // fn get_directory_data()
 
 //
 
-struct FileType {
-    name: String,
-    extension: String,
-    size: u64,
-    modified: SystemTime,
-    changed: SystemTime,
-    accessed: SystemTime,
-    created: SystemTime,
-    file_type: String,
-}
 
 fn main() -> std::io::Result<()> {
     let paths = fs::read_dir("./").unwrap();
