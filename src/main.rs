@@ -1,8 +1,6 @@
-use std::{fs, time::SystemTime};
-
-// fn get_directory_data()
-
-//
+use clap::Parser;
+use std::time::SystemTime;
+mod cli;
 
 struct FileType {
     name: String,
@@ -16,14 +14,9 @@ struct FileType {
 }
 
 fn main() -> std::io::Result<()> {
-    let paths = fs::read_dir("./").unwrap();
+    let args = cli::Cli::parse();
 
-    for path in paths {
-        let path = path.unwrap().path();
-        let metadata = fs::metadata(&path)?;
-        println!("Name: {}", path.display());
-        println!("{:#?}", metadata);
-    }
+    println!("{:?}", args);
 
     Ok(())
 }
