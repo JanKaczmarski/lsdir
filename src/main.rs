@@ -7,7 +7,7 @@ use std::{fs, time::SystemTime};
 struct FileType {
     name: String,
     extension: String,
-    size: String,
+    size: u64,
     modified: SystemTime,
     changed: SystemTime,
     accessed: SystemTime,
