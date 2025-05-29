@@ -1,11 +1,11 @@
 use crate::file_type::FileType;
 
-enum Predicate {
+pub enum Predicate {
     Name(String),
     Size(u64),
 }
 
-fn filter<'a>(
+pub fn filter<'a>(
     paths: &[&'a FileType],
     predicate: Predicate
 ) -> Vec<&'a FileType> {
