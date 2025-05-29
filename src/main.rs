@@ -1,17 +1,11 @@
 use clap::Parser;
-use std::time::SystemTime;
 mod cli;
+mod file_type;
+mod utilities;
 
-struct FileType {
-    name: String,
-    extension: String,
-    size: String,
-    modified: SystemTime,
-    changed: SystemTime,
-    accessed: SystemTime,
-    created: SystemTime,
-    file_type: String,
-}
+use std::fs;
+
+
 
 fn main() -> std::io::Result<()> {
     let args = cli::Cli::parse();
