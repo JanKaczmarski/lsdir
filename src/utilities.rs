@@ -1,4 +1,5 @@
 use std::time::SystemTime;
+use regex::Regex;
 
 use crate::file_type::FileType;
 
@@ -31,8 +32,13 @@ pub fn filter<'a>(
         .filter(|entry_ref| {
             let entry: &FileType = *entry_ref;
             match &predicate {
-                Predicate::Name(name) =>
-                    entry.name == *name,
+                Predicate::Name(name) => {
+                    if let Ok(regex) = Regex::new(name) {
+                        regex.is_match(&entry.name)
+                    } else {
+                        entry.name == *name
+                    }
+                }
                 Predicate::Extension(extension) =>
                     entry.extension == *extension,
                 Predicate::Size(size, comparison_operator) =>
