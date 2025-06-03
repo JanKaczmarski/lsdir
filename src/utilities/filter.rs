@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 use regex::Regex;
 
-use crate::file_type::File;
+use crate::file::File;
 
 #[derive(Debug, Clone)]
 pub enum ComparisonOperator{
@@ -85,7 +85,7 @@ pub fn filter<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::file_type::File;
+    use crate::file::File;
     use std::time::{UNIX_EPOCH, Duration};
 
     fn mock_file(

@@ -1,6 +1,6 @@
 use clap::Parser;
 mod cli;
-mod file_type;
+mod file;
 mod utilities;
 
 use std::fs;
