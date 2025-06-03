@@ -3,7 +3,7 @@ use std::fs::DirEntry;
 use std::io::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileType {
+pub struct File {
     pub name: String,
     pub extension: String,
     pub size: u64,
@@ -13,7 +13,7 @@ pub struct FileType {
     pub file_type: String,
 }
 
-impl FileType {
+impl File {
     pub fn from_dir_entry(entry: &DirEntry) -> Result<Self> {
         let metadata = entry.metadata()?;
         let name = entry.file_name().to_string_lossy().into_owned();

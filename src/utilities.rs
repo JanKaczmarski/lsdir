@@ -1,7 +1,7 @@
 use std::time::SystemTime;
 use regex::Regex;
 
-use crate::file_type::FileType;
+use crate::file_type::File;
 
 #[derive(Debug, Clone)]
 pub enum ComparisonOperator{
@@ -24,13 +24,13 @@ pub enum Predicate {
 }
 
 pub fn filter<'a>(
-    paths: &[&'a FileType],
+    paths: &[&'a File],
     predicate: Predicate
-) -> Vec<&'a FileType> {
+) -> Vec<&'a File> {
     paths
         .iter()
         .filter(|entry_ref| {
-            let entry: &FileType = *entry_ref;
+            let entry: &File = *entry_ref;
             match &predicate {
                 Predicate::Name(name) => {
                     if let Ok(regex) = Regex::new(name) {
@@ -85,7 +85,7 @@ pub fn filter<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::file_type::FileType;
+    use crate::file_type::File;
     use std::time::{UNIX_EPOCH, Duration};
 
     fn mock_file(
@@ -96,8 +96,8 @@ mod tests {
         accessed: u64,
         created: u64,
         file_type: &str,
-    ) -> FileType {
-        FileType {
+    ) -> File {
+        File {
             name: name.to_string(),
             extension: extension.to_string(),
             size,
