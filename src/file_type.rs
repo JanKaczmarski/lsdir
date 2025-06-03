@@ -2,7 +2,7 @@ use std::time::SystemTime;
 use std::fs::DirEntry;
 use std::io::Result;
 
-
+#[derive(Debug, Clone)]
 pub struct FileType {
     pub name: String,
     pub extension: String,

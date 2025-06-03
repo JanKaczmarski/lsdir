@@ -1,8 +1,18 @@
 use crate::file_type::FileType;
 
+#[derive(Debug, Clone)]
+pub enum ComparisonOperator{
+    EqualTo,
+    GreaterThan,
+    GreaterThanOrEqualTo,
+    LessThan,
+    LessThanOrEqualTo,
+}
+
+#[derive(Debug, Clone)]
 pub enum Predicate {
     Name(String),
-    Size(u64),
+    Size(u64, ComparisonOperator),
 }
 
 pub fn filter<'a>(
@@ -17,9 +27,14 @@ pub fn filter<'a>(
                 Predicate::Name(name) => {
                     entry.name == *name
                 }
-                Predicate::Size(size) => {
-                    entry.size == *size
-                }
+                Predicate::Size(size, comparison_operator) =>
+                    match comparison_operator {
+                        ComparisonOperator::EqualTo => entry.size == *size,
+                        ComparisonOperator::GreaterThan => entry.size > *size,
+                        ComparisonOperator::GreaterThanOrEqualTo => entry.size >= *size,
+                        ComparisonOperator::LessThan => entry.size < *size,
+                        ComparisonOperator::LessThanOrEqualTo => entry.size <= *size,
+                    }
             }
         })
         .copied()
