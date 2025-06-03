@@ -12,6 +12,23 @@ pub enum ComparisonOperator{
     LessThanOrEqualTo,
 }
 
+impl ComparisonOperator {
+    pub fn compare<T: PartialEq + PartialOrd>(
+        &self,
+        a: T,
+        b: T
+    ) -> bool {
+        match self {
+            ComparisonOperator::EqualTo => a == b,
+            ComparisonOperator::GreaterThan => a > b,
+            ComparisonOperator::GreaterThanOrEqualTo => a >= b,
+            ComparisonOperator::LessThan => a < b,
+            ComparisonOperator::LessThanOrEqualTo => a <= b,
+        }
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub enum Predicate {
     Name(String),
@@ -42,37 +59,13 @@ pub fn filter<'a>(
                 Predicate::Extension(extension) =>
                     entry.extension == *extension,
                 Predicate::Size(size, comparison_operator) =>
-                    match comparison_operator {
-                        ComparisonOperator::EqualTo => entry.size == *size,
-                        ComparisonOperator::GreaterThan => entry.size > *size,
-                        ComparisonOperator::GreaterThanOrEqualTo => entry.size >= *size,
-                        ComparisonOperator::LessThan => entry.size < *size,
-                        ComparisonOperator::LessThanOrEqualTo => entry.size <= *size,
-                    }
+                    comparison_operator.compare(entry.size, *size),
                 Predicate::Modified(time, comparison_operator) =>
-                    match comparison_operator {
-                        ComparisonOperator::EqualTo => entry.modified == *time,
-                        ComparisonOperator::GreaterThan => entry.modified > *time,
-                        ComparisonOperator::GreaterThanOrEqualTo => entry.modified >= *time,
-                        ComparisonOperator::LessThan => entry.modified < *time,
-                        ComparisonOperator::LessThanOrEqualTo => entry.modified <= *time,
-                    }
+                    comparison_operator.compare(entry.modified, *time),
                 Predicate::Accessed(time, comparison_operator) =>
-                    match comparison_operator {
-                        ComparisonOperator::EqualTo => entry.accessed == *time,
-                        ComparisonOperator::GreaterThan => entry.accessed > *time,
-                        ComparisonOperator::GreaterThanOrEqualTo => entry.accessed >= *time,
-                        ComparisonOperator::LessThan => entry.accessed < *time,
-                        ComparisonOperator::LessThanOrEqualTo => entry.accessed <= *time,
-                    }
+                    comparison_operator.compare(entry.accessed, *time),
                 Predicate::Created(time, comparison_operator) =>
-                    match comparison_operator {
-                        ComparisonOperator::EqualTo => entry.created == *time,
-                        ComparisonOperator::GreaterThan => entry.created > *time,
-                        ComparisonOperator::GreaterThanOrEqualTo => entry.created >= *time,
-                        ComparisonOperator::LessThan => entry.created < *time,
-                        ComparisonOperator::LessThanOrEqualTo => entry.created <= *time,
-                    }
+                    comparison_operator.compare(entry.created, *time),
                 Predicate::FileType(file_type) =>
                     entry.file_type == *file_type,
             }
