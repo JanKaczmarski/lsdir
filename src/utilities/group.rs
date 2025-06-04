@@ -93,3 +93,116 @@ pub fn group(
         .map(|(_, group)| group)
         .collect()
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, Duration};
+
+    #[derive(Debug, Clone)]
+    pub struct MockFile {
+        pub extension: String,
+        pub size: u64,
+        pub modified: SystemTime,
+        pub accessed: SystemTime,
+        pub created: SystemTime,
+        pub file_type: String,
+    }
+
+    // Implement conversion from MockFile to File if needed, or use File directly if possible.
+    impl From<&MockFile> for File {
+        fn from(m: &MockFile) -> Self {
+            File {
+                name: "mock_file".to_string(),
+                extension: m.extension.clone(),
+                size: m.size,
+                modified: m.modified,
+                accessed: m.accessed,
+                created: m.created,
+                file_type: m.file_type.clone(),
+            }
+        }
+    }
+
+    fn sample_files() -> Vec<File> {
+        let now = SystemTime::now();
+        let earlier = now - Duration::from_secs(3600);
+
+        vec![
+            File {
+                name: "file1.txt".to_string(),
+                extension: "txt".to_string(),
+                size: 1000,
+                modified: now,
+                accessed: now,
+                created: now,
+                file_type: "file".to_string(),
+            },
+            File {
+                name: "file2.rs".to_string(),
+                extension: "rs".to_string(),
+                size: 2048,
+                modified: earlier,
+                accessed: earlier,
+                created: earlier,
+                file_type: "file".to_string(),
+            },
+            File {
+                name: "file3.txt".to_string(),
+                extension: "txt".to_string(),
+                size: 4096,
+                modified: now,
+                accessed: now,
+                created: now,
+                file_type: "file".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_group_by_extension() {
+        let files = sample_files();
+        let groups = group(&files, GroupingOperator::Extension);
+        // Should be 2 groups: "txt" and "rs"
+        assert_eq!(groups.len(), 2);
+        let extensions: Vec<String> = groups.iter()
+            .flat_map(|g| g.iter().map(|f| f.extension.clone()))
+            .collect();
+        assert!(extensions.contains(&"txt".to_string()));
+        assert!(extensions.contains(&"rs".to_string()));
+    }
+
+    #[test]
+    fn test_group_by_size() {
+        let files = sample_files();
+        let groups = group(&files, GroupingOperator::Size(SizeMagnitude::Kilobytes));
+        // Should be 3 groups, as all sizes are different in KB
+        assert_eq!(groups.len(), 3);
+    }
+
+    #[test]
+    fn test_group_by_file_type() {
+        let files = sample_files();
+        let groups = group(&files, GroupingOperator::FileType);
+        // All are "file"
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 3);
+    }
+
+    #[test]
+    fn test_group_by_modified_time_day() {
+        let files = sample_files();
+        let grouping = TimeGrouping {
+            year: true,
+            month: true,
+            day: true,
+            hour: false,
+            minute: false,
+            second: false,
+        };
+        let groups = group(&files, GroupingOperator::Modified(grouping));
+        // Should be 1 or 2 groups depending on the day difference
+        assert!(groups.len() >= 1);
+    }
+}
