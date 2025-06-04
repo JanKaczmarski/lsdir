@@ -60,7 +60,7 @@ pub enum GroupingOperator {
     FileType,
 }
 
-fn group(
+pub fn group(
     files: &[File],
     operator: GroupingOperator,
 ) -> Vec<Vec<&File>> {
