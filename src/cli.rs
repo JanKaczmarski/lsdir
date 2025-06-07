@@ -1,4 +1,4 @@
-use crate::utilities::{AggrFunc, Comparison, Field};
+use crate::utilities::{AggrFunc, Comparison};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -7,9 +7,9 @@ pub struct Cli {
     #[arg(value_name = "PATH")]
     pub path: Option<String>,
 
-    /// GROUP BY clause - field to group files by
+    /// GROUP BY clause - field to group files by (e.g., 'extension', 'size', etc.)
     #[arg(short, long, value_name = "FIELD")]
-    pub group_by: Option<Field>,
+    pub group_by: Option<String>,
 
     /// WHERE clause - filter condition in format: field,operator,value
     /// Examples: size,gt,123 or name,eq,test_*
@@ -30,7 +30,7 @@ pub struct Cli {
 /// Represents a parsed WHERE condition
 #[derive(Debug, Clone)]
 pub struct WhereCondition {
-    pub field: Field,
+    pub field: String,
     pub operator: Comparison,
     pub value: String,
 }
@@ -46,14 +46,10 @@ impl WhereCondition {
             ));
         }
 
-        let field = parts[0]
-            .parse::<Field>()
-            .map_err(|_| format!("Invalid field: {}", parts[0]))?;
-
+        let field = parts[0].trim().to_string();
         let operator = parts[1]
             .parse::<Comparison>()
             .map_err(|_| format!("Invalid operator: {}", parts[1]))?;
-
         let value = parts[2].to_string();
 
         Ok(WhereCondition {

@@ -7,10 +7,33 @@ use cli::{Cli, WhereCondition};
 use file::File;
 use std::{collections::HashMap, fs};
 use utilities::aggregate::{ArithmeticAggregator, ComparingAggregator, average, max, min, sum};
-use utilities::{AggrFunc, Comparison, Field};
+use utilities::filter::{filter, Predicate};
+use utilities::group::{group, GroupingOperator, SizeMagnitude, TimeGrouping};
+use utilities::{AggrFunc, Comparison};
 
 fn main() -> std::io::Result<()> {
     let args = Cli::parse();
+
+    // Validate grouping field early - utilities only support certain fields for grouping
+    if let Some(group_field) = &args.group_by {
+        match group_field.to_lowercase().as_str() {
+            "name" => {
+                eprintln!("Error: Grouping by 'name' is not supported by the utilities.");
+                eprintln!(
+                    "Supported grouping fields: extension, file_type, size, modified, accessed, created"
+                );
+                return Ok(());
+            }
+            "extension" | "file_type" | "size" | "modified" | "accessed" | "created" => {} // Valid
+            _ => {
+                eprintln!(
+                    "Error: Invalid grouping field '{}'. Supported fields: extension, file_type, size, modified, accessed, created",
+                    group_field
+                );
+                return Ok(());
+            }
+        }
+    }
 
     // Get directory path (default to current directory)
     let dir_path = args.path.as_deref().unwrap_or(".");
@@ -35,6 +58,10 @@ fn main() -> std::io::Result<()> {
     if let Some(group_field) = &args.group_by {
         let grouped = group_files(&filtered_files, group_field);
 
+        if grouped.is_empty() {
+            return Ok(());
+        }
+
         if let Some(function) = &args.function {
             apply_aggregation(&grouped, function, &args.params);
         } else {
@@ -53,7 +80,6 @@ fn main() -> std::io::Result<()> {
 
 fn read_directory(path: &str) -> std::io::Result<Vec<File>> {
     let mut files = Vec::new();
-
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         match File::from_dir_entry(&entry) {
@@ -61,243 +87,218 @@ fn read_directory(path: &str) -> std::io::Result<Vec<File>> {
             Err(e) => eprintln!("Warning: Could not read file {:?}: {}", entry.path(), e),
         }
     }
-
     Ok(files)
 }
 
+// Chose only those `files` that match `condition`
 fn filter_files(files: &[File], condition: &WhereCondition) -> Vec<File> {
-    files
-        .iter()
-        .filter(|file| matches_condition(file, condition))
-        .cloned()
-        .collect()
-}
-
-fn matches_condition(file: &File, condition: &WhereCondition) -> bool {
-    let field_value = match condition.field {
-        Field::Name => &file.name,
-        Field::Extension => &file.extension,
-        Field::FileType => &file.file_type,
-        Field::Size => return compare_numeric(file.size, &condition.operator, &condition.value),
-        Field::Modified | Field::Accessed | Field::Created => {
-            // For now, skip time comparisons (would need more complex parsing)
-            return true;
+    // casting to appropriate datatype
+    let predicate = match condition.field.to_lowercase().as_str() {
+        "name" => Predicate::Name(condition.value.clone()),
+        "extension" => Predicate::Extension(condition.value.clone()),
+        "file_type" => Predicate::FileType(condition.value.clone()),
+        "size" => {
+            if let Ok(size_value) = condition.value.parse::<u64>() {
+                Predicate::Size(size_value, condition.operator.clone())
+            } else {
+                eprintln!("Warning: Invalid size value '{}'", condition.value);
+                return files.to_vec();
+            }
+        }
+        "modified" | "accessed" | "created" => {
+            eprintln!("Warning: Time-based filtering requires time parsing (not implemented yet)");
+            return files.to_vec();
+        }
+        _ => {
+            eprintln!("Warning: Unknown field '{}'", condition.field);
+            return files.to_vec();
         }
     };
-
-    compare_string(field_value, &condition.operator, &condition.value)
+    let file_refs: Vec<&File> = files.iter().collect();
+    let filtered_refs = filter(&file_refs, predicate);
+    filtered_refs.into_iter().cloned().collect()
 }
 
-fn compare_string(field_value: &str, operator: &Comparison, target_value: &str) -> bool {
-    match operator {
-        Comparison::Eq => field_value == target_value || matches_pattern(field_value, target_value),
-        Comparison::Ne => {
-            field_value != target_value && !matches_pattern(field_value, target_value)
+// given some `files` and `group_field` return a HashMap that will have `identifier` and this identifier
+// would be the id that identifies elements in that key-value pair.
+// When grouping by file extension keys would be like: "txt", "py", "rs". And the values would be text files for .txt
+// python files for .py and rust files for .rs
+fn group_files(files: &[File], group_field: &str) -> HashMap<String, Vec<File>> {
+    let grouping_operator = match group_field.to_lowercase().as_str() {
+        "extension" => GroupingOperator::Extension,
+        "file_type" => GroupingOperator::FileType,
+        "size" => GroupingOperator::Size(SizeMagnitude::Bytes),
+        "modified" => GroupingOperator::Modified(TimeGrouping {
+            year: true,
+            month: true,
+            day: false,
+            hour: false,
+            minute: false,
+            second: false,
+        }),
+        "accessed" => GroupingOperator::Accessed(TimeGrouping {
+            year: true,
+            month: true,
+            day: false,
+            hour: false,
+            minute: false,
+            second: false,
+        }),
+        "created" => GroupingOperator::Created(TimeGrouping {
+            year: true,
+            month: true,
+            day: false,
+            hour: false,
+            minute: false,
+            second: false,
+        }),
+        _ => {
+            eprintln!("Warning: Unknown grouping field '{}'", group_field);
+            return HashMap::new();
         }
-        Comparison::Contains => field_value.contains(target_value),
-        Comparison::StartsWith => field_value.starts_with(target_value),
-        Comparison::EndsWith => field_value.ends_with(target_value),
-        _ => false, // Other operators don't make sense for strings
-    }
-}
-
-fn compare_numeric(field_value: u64, operator: &Comparison, target_str: &str) -> bool {
-    if let Ok(target_value) = target_str.parse::<u64>() {
-        match operator {
-            Comparison::Eq => field_value == target_value,
-            Comparison::Ne => field_value != target_value,
-            Comparison::Gt => field_value > target_value,
-            Comparison::Ge => field_value >= target_value,
-            Comparison::Lt => field_value < target_value,
-            Comparison::Le => field_value <= target_value,
-            _ => false,
+    };
+    let grouped_refs = group(files, grouping_operator);
+    let mut result = HashMap::new();
+    for group in grouped_refs {
+        if let Some(file) = group.first() {
+            // put file to its group, ex. if grouping by extension, this would dump all .txt files into one key,value and .py to other key,value
+            let key = match group_field.to_lowercase().as_str() {
+                "extension" => file.extension.clone(),
+                "file_type" => file.file_type.clone(),
+                "size" => SizeMagnitude::Bytes.convert(file.size),
+                "modified" => TimeGrouping {
+                    year: true,
+                    month: true,
+                    day: false,
+                    hour: false,
+                    minute: false,
+                    second: false,
+                }.format(file.modified),
+                "accessed" => TimeGrouping {
+                    year: true,
+                    month: true,
+                    day: false,
+                    hour: false,
+                    minute: false,
+                    second: false,
+                }.format(file.accessed),
+                "created" => TimeGrouping {
+                    year: true,
+                    month: true,
+                    day: false,
+                    hour: false,
+                    minute: false,
+                    second: false,
+                }.format(file.created),
+                _ => "unknown".to_string(),
+            };
+            let owned_files: Vec<File> = group.into_iter().cloned().collect();
+            result.insert(key, owned_files);
         }
-    } else {
-        false
     }
+    result
 }
 
-fn matches_pattern(text: &str, pattern: &str) -> bool {
-    // Simple wildcard matching for patterns like "test_*"
-    if pattern.contains('*') {
-        let parts: Vec<&str> = pattern.split('*').collect();
-        if parts.len() == 2 {
-            let prefix = parts[0];
-            let suffix = parts[1];
-            return text.starts_with(prefix) && text.ends_with(suffix);
-        }
-    }
-    false
-}
-
-fn group_files(files: &[File], group_field: &Field) -> HashMap<String, Vec<File>> {
-    let mut groups: HashMap<String, Vec<File>> = HashMap::new();
-
-    for file in files {
-        let group_key = match group_field {
-            Field::Name => file.name.clone(),
-            Field::Extension => file.extension.clone(),
-            Field::FileType => file.file_type.clone(),
-            Field::Size => format!("{}", file.size),
-            Field::Modified => format!("{:?}", file.modified),
-            Field::Accessed => format!("{:?}", file.accessed),
-            Field::Created => format!("{:?}", file.created),
-        };
-
-        groups.entry(group_key).or_default().push(file.clone());
-    }
-
-    groups
-}
-
-fn apply_aggregation(grouped: &HashMap<String, Vec<File>>, function: &AggrFunc, params: &[String]) {
-    println!("Aggregation Results:");
-    println!("-------------------");
-
-    for (group_name, files) in grouped {
-        let result = match function {
-            AggrFunc::Count => files.len() as f64,
-            AggrFunc::Sum | AggrFunc::Avg => {
-                if params.is_empty() {
-                    eprintln!(
-                        "Error: {} function requires a parameter (field name)",
-                        format!("{:?}", function)
-                    );
-                    continue;
-                }
-                match params[0].to_lowercase().as_str() {
-                    "size" => {
-                        if matches!(function, AggrFunc::Avg) {
-                            average(files, ArithmeticAggregator::Size).unwrap_or(0.0)
-                        } else {
-                            sum(files, ArithmeticAggregator::Size) as f64
-                        }
-                    }
-                    _ => {
-                        eprintln!(
-                            "Error: Unsupported field '{}' for arithmetic operations",
-                            params[0]
-                        );
-                        continue;
+fn apply_aggregation(
+    grouped_files: &HashMap<String, Vec<File>>,
+    function: &AggrFunc,
+    params: &[String],
+) {
+    for (group_key, files) in grouped_files {
+        println!("Group: {}", group_key);
+        match function {
+            AggrFunc::Count => {
+                println!("  Count: {}", files.len());
+            }
+            AggrFunc::Sum => {
+                if let Some(param) = params.first() {
+                    if param == "size" {
+                        println!("  Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
                     }
                 }
             }
-            AggrFunc::Max => {
-                if params.is_empty() {
-                    eprintln!("Error: MAX function requires a parameter (field name)");
-                    continue;
-                }
-                match params[0].to_lowercase().as_str() {
-                    "size" => max(files, ComparingAggregator::Size)
-                        .map(|f| f.size as f64)
-                        .unwrap_or(0.0),
-                    _ => {
-                        eprintln!("Error: Unsupported field '{}' for MAX operation", params[0]);
-                        continue;
+            AggrFunc::Avg => {
+                if let Some(param) = params.first() {
+                    if param == "size" {
+                        println!("  Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
                     }
                 }
             }
             AggrFunc::Min => {
-                if params.is_empty() {
-                    eprintln!("Error: MIN function requires a parameter (field name)");
-                    continue;
-                }
-                match params[0].to_lowercase().as_str() {
-                    "size" => min(files, ComparingAggregator::Size)
-                        .map(|f| f.size as f64)
-                        .unwrap_or(0.0),
-                    _ => {
-                        eprintln!("Error: Unsupported field '{}' for MIN operation", params[0]);
-                        continue;
+                if let Some(param) = params.first() {
+                    if param == "size" {
+                        if let Some(f) = min(files, ComparingAggregator::Size) {
+                            println!("  Min Size: {}", f.size);
+                        }
                     }
                 }
             }
-        };
-
-        println!("{}: {}", group_name, result);
+            AggrFunc::Max => {
+                if let Some(param) = params.first() {
+                    if param == "size" {
+                        if let Some(f) = max(files, ComparingAggregator::Size) {
+                            println!("  Max Size: {}", f.size);
+                        }
+                    }
+                }
+            }
+        }
+        println!();
     }
 }
 
 fn apply_single_aggregation(files: &[File], function: &AggrFunc, params: &[String]) {
-    let result = match function {
-        AggrFunc::Count => files.len() as f64,
-        AggrFunc::Sum | AggrFunc::Avg => {
-            if params.is_empty() {
-                eprintln!(
-                    "Error: {} function requires a parameter (field name)",
-                    format!("{:?}", function)
-                );
-                return;
-            }
-            match params[0].to_lowercase().as_str() {
-                "size" => {
-                    if matches!(function, AggrFunc::Avg) {
-                        average(files, ArithmeticAggregator::Size).unwrap_or(0.0)
-                    } else {
-                        sum(files, ArithmeticAggregator::Size) as f64
-                    }
-                }
-                _ => {
-                    eprintln!(
-                        "Error: Unsupported field '{}' for arithmetic operations",
-                        params[0]
-                    );
-                    return;
+    match function {
+        AggrFunc::Count => {
+            println!("Count: {}", files.len());
+        }
+        AggrFunc::Sum => {
+            if let Some(param) = params.first() {
+                if param == "size" {
+                    println!("Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
                 }
             }
         }
-        AggrFunc::Max => {
-            if params.is_empty() {
-                eprintln!("Error: MAX function requires a parameter (field name)");
-                return;
-            }
-            match params[0].to_lowercase().as_str() {
-                "size" => max(files, ComparingAggregator::Size)
-                    .map(|f| f.size as f64)
-                    .unwrap_or(0.0),
-                _ => {
-                    eprintln!("Error: Unsupported field '{}' for MAX operation", params[0]);
-                    return;
+        AggrFunc::Avg => {
+            if let Some(param) = params.first() {
+                if param == "size" {
+                    println!("Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
                 }
             }
         }
         AggrFunc::Min => {
-            if params.is_empty() {
-                eprintln!("Error: MIN function requires a parameter (field name)");
-                return;
-            }
-            match params[0].to_lowercase().as_str() {
-                "size" => min(files, ComparingAggregator::Size)
-                    .map(|f| f.size as f64)
-                    .unwrap_or(0.0),
-                _ => {
-                    eprintln!("Error: Unsupported field '{}' for MIN operation", params[0]);
-                    return;
+            if let Some(param) = params.first() {
+                if param == "size" {
+                    if let Some(f) = min(files, ComparingAggregator::Size) {
+                        println!("Min Size: {}", f.size);
+                    }
                 }
             }
         }
-    };
-
-    println!("{:?}: {}", function, result);
-}
-
-fn display_grouped_files(grouped: &HashMap<String, Vec<File>>) {
-    for (group_name, files) in grouped {
-        println!("\n{} ({} files):", group_name, files.len());
-        println!("{}", "-".repeat(40));
-        for file in files {
-            println!("  {} ({} bytes)", file.name, file.size);
+        AggrFunc::Max => {
+            if let Some(param) = params.first() {
+                if param == "size" {
+                    if let Some(f) = max(files, ComparingAggregator::Size) {
+                        println!("Max Size: {}", f.size);
+                    }
+                }
+            }
         }
     }
 }
 
+fn display_grouped_files(grouped_files: &HashMap<String, Vec<File>>) {
+    for (group_key, files) in grouped_files {
+        println!("Group: {} ({} files)", group_key, files.len());
+        for file in files {
+            println!("  {} ({} bytes)", file.name, file.size);
+        }
+        println!();
+    }
+}
+
 fn display_files(files: &[File]) {
-    println!("Files ({} total):", files.len());
-    println!("{}", "-".repeat(40));
     for file in files {
-        println!(
-            "{:<30} {:<10} {:>10} bytes",
-            file.name, file.file_type, file.size
-        );
+        println!("{} ({} bytes)", file.name, file.size);
     }
 }

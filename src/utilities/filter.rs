@@ -2,53 +2,7 @@ use regex::Regex;
 use std::time::SystemTime;
 
 use crate::file::File;
-
-/// Defines comparison operators for filtering operations.
-///
-/// This enum provides different comparison operations that can be used
-/// when filtering files based on numeric or time-based criteria such as
-/// file size, modification time, access time, or creation time.
-///
-/// # Variants
-/// - `EqualTo`: Exact equality comparison (==)
-/// - `GreaterThan`: Greater than comparison (>)
-/// - `GreaterThanOrEqualTo`: Greater than or equal comparison (>=)
-/// - `LessThan`: Less than comparison (<)
-/// - `LessThanOrEqualTo`: Less than or equal comparison (<=)
-#[derive(Debug, Clone)]
-pub enum ComparisonOperator {
-    EqualTo,
-    GreaterThan,
-    GreaterThanOrEqualTo,
-    LessThan,
-    LessThanOrEqualTo,
-}
-
-impl ComparisonOperator {
-    /// Compares two values using the specified comparison operator.
-    ///
-    /// This method performs a comparison between two values of the same type
-    /// using the comparison operation defined by the enum variant. The values
-    /// must implement both `PartialEq` and `PartialOrd` traits.
-    ///
-    /// # Arguments
-    ///
-    /// * `a` - The first value to compare
-    /// * `b` - The second value to compare
-    ///
-    /// # Returns
-    ///
-    /// `true` if the comparison condition is met, `false` otherwise.
-    pub fn compare<T: PartialEq + PartialOrd>(&self, a: T, b: T) -> bool {
-        match self {
-            ComparisonOperator::EqualTo => a == b,
-            ComparisonOperator::GreaterThan => a > b,
-            ComparisonOperator::GreaterThanOrEqualTo => a >= b,
-            ComparisonOperator::LessThan => a < b,
-            ComparisonOperator::LessThanOrEqualTo => a <= b,
-        }
-    }
-}
+use crate::utilities::Comparison;
 
 /// Defines various filtering predicates for files.
 ///
@@ -59,10 +13,10 @@ impl ComparisonOperator {
 /// # Variants
 /// - `Name(String)`: Filter by file name using exact match or regex pattern
 /// - `Extension(String)`: Filter by file extension (exact match)
-/// - `Size(u64, ComparisonOperator)`: Filter by file size with comparison operator
-/// - `Modified(SystemTime, ComparisonOperator)`: Filter by modification time with comparison
-/// - `Accessed(SystemTime, ComparisonOperator)`: Filter by access time with comparison
-/// - `Created(SystemTime, ComparisonOperator)`: Filter by creation time with comparison
+/// - `Size(u64, Comparison)`: Filter by file size with comparison operator
+/// - `Modified(SystemTime, Comparison)`: Filter by modification time with comparison
+/// - `Accessed(SystemTime, Comparison)`: Filter by access time with comparison
+/// - `Created(SystemTime, Comparison)`: Filter by creation time with comparison
 /// - `FileType(String)`: Filter by file type (e.g., "File", "Directory")
 ///
 /// # Name Filtering Behavior
@@ -74,10 +28,10 @@ impl ComparisonOperator {
 pub enum Predicate {
     Name(String),
     Extension(String),
-    Size(u64, ComparisonOperator),
-    Modified(SystemTime, ComparisonOperator),
-    Accessed(SystemTime, ComparisonOperator),
-    Created(SystemTime, ComparisonOperator),
+    Size(u64, Comparison),
+    Modified(SystemTime, Comparison),
+    Accessed(SystemTime, Comparison),
+    Created(SystemTime, Comparison),
     FileType(String),
 }
 
@@ -117,17 +71,17 @@ pub fn filter<'a>(paths: &[&'a File], predicate: Predicate) -> Vec<&'a File> {
                     }
                 }
                 Predicate::Extension(extension) => entry.extension == *extension,
-                Predicate::Size(size, comparison_operator) => {
-                    comparison_operator.compare(entry.size, *size)
+                Predicate::Size(size, comparison) => {
+                    comparison.compare(entry.size, *size)
                 }
-                Predicate::Modified(time, comparison_operator) => {
-                    comparison_operator.compare(entry.modified, *time)
+                Predicate::Modified(time, comparison) => {
+                    comparison.compare(entry.modified, *time)
                 }
-                Predicate::Accessed(time, comparison_operator) => {
-                    comparison_operator.compare(entry.accessed, *time)
+                Predicate::Accessed(time, comparison) => {
+                    comparison.compare(entry.accessed, *time)
                 }
-                Predicate::Created(time, comparison_operator) => {
-                    comparison_operator.compare(entry.created, *time)
+                Predicate::Created(time, comparison) => {
+                    comparison.compare(entry.created, *time)
                 }
                 Predicate::FileType(file_type) => entry.file_type == *file_type,
             }
@@ -184,7 +138,7 @@ mod tests {
         let file1 = mock_file("a.txt", "txt", 10, 0, 0, 0, "File");
         let file2 = mock_file("b.txt", "txt", 20, 0, 0, 0, "File");
         let files = vec![&file1, &file2];
-        let result = filter(&files, Predicate::Size(15, ComparisonOperator::GreaterThan));
+        let result = filter(&files, Predicate::Size(15, Comparison::Gt));
         assert_eq!(result, vec![&file2]);
     }
 
@@ -197,7 +151,7 @@ mod tests {
             &files,
             Predicate::Modified(
                 UNIX_EPOCH + Duration::from_secs(15),
-                ComparisonOperator::LessThan,
+                Comparison::Lt,
             ),
         );
         assert_eq!(result, vec![&file1]);
@@ -212,7 +166,7 @@ mod tests {
             &files,
             Predicate::Accessed(
                 UNIX_EPOCH + Duration::from_secs(20),
-                ComparisonOperator::EqualTo,
+                Comparison::Eq,
             ),
         );
         assert_eq!(result, vec![&file2]);
@@ -227,7 +181,7 @@ mod tests {
             &files,
             Predicate::Created(
                 UNIX_EPOCH + Duration::from_secs(10),
-                ComparisonOperator::GreaterThanOrEqualTo,
+                Comparison::Ge,
             ),
         );
         assert_eq!(result, vec![&file1, &file2]);

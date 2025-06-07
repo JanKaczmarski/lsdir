@@ -4,7 +4,7 @@ pub mod group;
 
 // Re-export common types for CLI usage
 pub use aggregate::{ArithmeticAggregator, ComparingAggregator};
-pub use filter::{ComparisonOperator, Predicate};
+pub use filter::{Predicate};
 pub use group::{GroupingOperator, SizeMagnitude, TimeGrouping};
 
 // Create unified enums for CLI
@@ -12,39 +12,11 @@ use clap::ValueEnum;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, ValueEnum)]
-pub enum Field {
-    Name,
-    Extension,
-    Size,
-    FileType,
-    Modified,
-    Accessed,
-    Created,
-}
-
-impl FromStr for Field {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "name" => Ok(Field::Name),
-            "extension" => Ok(Field::Extension),
-            "size" => Ok(Field::Size),
-            "file_type" | "filetype" => Ok(Field::FileType),
-            "modified" => Ok(Field::Modified),
-            "accessed" => Ok(Field::Accessed),
-            "created" => Ok(Field::Created),
-            _ => Err(format!("Invalid field: {}", s)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, ValueEnum)]
 pub enum Comparison {
-    /// Equal to
-    Eq,
     /// Not equal to
     Ne,
+    /// Equal to
+    Eq,
     /// Greater than
     Gt,
     /// Greater than or equal
@@ -76,6 +48,24 @@ impl FromStr for Comparison {
             "starts_with" | "startswith" => Ok(Comparison::StartsWith),
             "ends_with" | "endswith" => Ok(Comparison::EndsWith),
             _ => Err(format!("Invalid comparison operator: {}", s)),
+        }
+    }
+}
+
+impl Comparison {
+    /// Compares two values using the specified comparison operator.
+    /// This method performs a comparison between two values of the same type
+    /// using the comparison operation defined by the enum variant. The values
+    /// must implement both `PartialEq` and `PartialOrd` traits.
+    pub fn compare<T: PartialEq + PartialOrd>(&self, a: T, b: T) -> bool {
+        match self {
+            Comparison::Ne => a != b,
+            Comparison::Eq => a == b,
+            Comparison::Gt => a > b,
+            Comparison::Ge => a >= b,
+            Comparison::Lt => a < b,
+            Comparison::Le => a <= b,
+            _ => false, // Only makes sense for string-specific ops
         }
     }
 }
