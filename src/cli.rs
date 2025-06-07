@@ -11,11 +11,12 @@ pub struct Cli {
     pub group_by: Option<String>,
 
     /// WHERE clause - filter condition in format: field,operator,value
-    /// Examples: size,gt,123 or name,eq,test_*
+    /// Examples: size,gt,123 or name,test_*
     #[arg(short, long, value_name = "CONDITION")]
     pub r#where: Option<String>,
 
     /// Aggregating function to use
+    /// Examples: count or sum or max,size or min,mod or avg
     #[arg(short, long, value_name = "FUNCTION")]
     pub aggregate: Option<String>,
 }
