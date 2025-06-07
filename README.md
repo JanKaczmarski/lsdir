@@ -27,7 +27,7 @@ A Rust CLI application that performs SQL-like operations (grouping, filtering, a
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-username/lsdir.git
+   git clone https://github.com/JanKaczmarski/lsdir.git
    cd lsdir
    ```
 
@@ -100,20 +100,19 @@ lsdir [OPTIONS] [PATH]
 
 - `-g, --group-by <FIELD>` - GROUP BY clause - field to group files by
 - `-w, --where <CONDITION>` - WHERE clause - filter condition in format: field,operator,value
-- `-f, --function <FUNCTION>` - Aggregating function to use
-- `-p, --params <PARAMS>` - Parameters for the aggregating function
+- `-a, --aggregate <FUNCTION>` - Aggregating function to use
 
 ### Available Fields
 
-- `name` - File name
-- `extension` - File extension
-- `size` - File size in bytes
-- `file_type` - File type (File or Directory)
-- `modified` - Last modification time
-- `accessed` - Last access time
-- `created` - Creation time
+- `name` / `n` - File name (regex)
+- `extension` / `ext` / `e` - File extension
+- `size` / `s` - File size in bytes
+- `file_type` / `type` / `f` / `t` - File type (File or Directory)
+- `modified` / `mod` / `m` - Last modification time
+- `accessed` / `acc` / `a` - Last access time
+- `created` / `cre` / `c` - Creation time
 
-### Available Operators
+### Available Operators for size and dates
 
 - `eq` / `equal` / `equals` - Equal to
 - `ne` / `not_equal` / `neq` - Not equal to
@@ -121,17 +120,30 @@ lsdir [OPTIONS] [PATH]
 - `ge` / `gte` / `greater_equal` - Greater than or equal
 - `lt` / `less` / `less_than` - Less than
 - `le` / `lte` / `less_equal` - Less than or equal
-- `contains` - Contains substring
-- `starts_with` / `startswith` - Starts with
-- `ends_with` / `endswith` - Ends with
 
-### Available Functions
+### Available Aggregation Functions
 
-- `count` - Count items
-- `sum` - Sum numeric values
-- `avg` - Average of numeric values
+- `count` / `c` - Count items
+- `sum` / `s` - Sum numeric values
+- `avg` / `a` - Average of numeric values
 - `max` - Maximum value
 - `min` - Minimum value
+
+### Available Grouping for size
+- `bytes` / `b` - Group by exact byte size
+- `kilobytes` / `kb` - Group by kilobytes (1024 bytes)
+- `megabytes` / `mb` - Group by megabytes (1024 kilobytes)
+- `gigabytes` / `gb` - Group by gigabytes (1024 megabytes)
+- `terabytes` / `tb` - Group by terabytes (1024 gigabytes)
+
+### Available Grouping for dates
+- `second` / `sec` / `s` - Group by seconds
+- `minute` / `min` - Group by minutes
+- `hour` / `h` - Group by hours
+- `day` / `d` - Group by days
+- `week` / `w` - Group by weeks
+- `month` / `m` - Group by months
+- `year` / `y` - Group by years
 
 ## Examples
 
@@ -149,19 +161,22 @@ lsdir /path/to/directory
 
 ```bash
 # Files larger than 1000 bytes
-lsdir --where="size,gt,1000"
+lsdir --where=size,gt,1000
+lsdir -w=s,gt,1000
 
 # Only Rust files
-lsdir --where="extension,eq,rs"
+lsdir --where=extension,rs
+lsdir -w=e,rs
 
 # Files containing "test" in name
-lsdir --where="name,contains,test"
+lsdir --where=name,test
+lsdir -w=n,test
 
-# Files starting with "lib"
-lsdir --where="name,starts_with,lib"
 
 # Pattern matching with wildcards
-lsdir --where="name,eq,test_*"
+lsdir --where=name,test*.txt
+lsdir -w=n,test*.txt
+
 ```
 
 ### Grouping Files
@@ -169,45 +184,59 @@ lsdir --where="name,eq,test_*"
 ```bash
 # Group by file type
 lsdir --group-by=file_type
+lsdir -g=f
+
 
 # Group by file extension
 lsdir --group-by=extension
+lsdir -g=e
+
 
 # Group by size (exact byte count)
-lsdir --group-by=size
+lsdir --group-by=size,bytes
+lsdir -g=s,b
 ```
 
 ### Aggregation Functions
 
 ```bash
 # Count all files
-lsdir --function=count
+lsdir --aggregate=count
+lsdir -a=c
 
 # Sum total size of all files
-lsdir --function=sum --params=size
+lsdir --aggregate=sum,size
+lsdir -a=s,s
 
 # Average file size
-lsdir --function=avg --params=size
+lsdir --aggregate=avg,size
+lsdir -a=a,s
 
 # Largest file size
-lsdir --function=max --params=size
+lsdir --function=max,size
+lsdir --function=max,s
 
 # Smallest file size
-lsdir --function=min --params=size
+lsdir --function=min,size
+lsdir --function=min,s
 ```
 
 ### Complex Queries
 
 ```bash
 # Count files by type, only for large files
-lsdir --group-by=file_type --function=count --where="size,gt,1000"
+lsdir --group-by=file_type --aggregate=count --where=size,gt,1000
+lsdir -g=f -a=c -w=s,gt,1000
 
-# Sum size by extension for Rust and C files
-lsdir --group-by=extension --function=sum --params=size --where="extension,contains,rs"
+# Sum size by extension for Rust files
+lsdir --group-by=extension --aggregate=sum,size --where=extension,rs
+lsdir -g=e -a=s,s -w=e,rs
 
 # Average size of files containing "main"
-lsdir --function=avg --params=size --where="name,contains,main"
+lsdir --aggregate=avg,size --where=name,main
+lsdir -a=a,s -w=n,main
 
 # Group by extension and show total size, only for files > 100 bytes
-lsdir --group-by=extension --function=sum --params=size --where="size,gt,100"
+lsdir --group-by=extension --aggregate=sum,size --where=size,gt,100
+lsdir -g=e -a=s,s -w=s,gt,100
 ```
