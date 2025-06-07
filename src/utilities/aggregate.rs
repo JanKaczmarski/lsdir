@@ -5,6 +5,8 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 
+
+/// Represents an aggregate function that can be applied to a collection of files.
 #[derive(Debug, Clone)]
 pub enum AggregateFunction {
     Count,
@@ -121,20 +123,19 @@ impl Display for ComparingAggregator {
 
 /// Finds the file with the maximum value for the specified comparison criterion.
 ///
-/// This function searches through a collection of files and returns the file
-/// that has the highest value according to the specified `ComparingAggregator`.
+/// This function searches through a collection of grouped files and returns, for each group,
+/// the file that has the highest value according to the specified `ComparingAggregator`.
 /// For example, it can find the largest file, the most recently modified file,
-/// or the most recently accessed file.
+/// or the most recently accessed file in each group.
 ///
 /// # Arguments
 ///
-/// * `files` - A slice of files to search through
+/// * `files` - A map from group key to a vector of file references
 /// * `aggregator` - The comparison criterion to use for finding the maximum
 ///
 /// # Returns
 ///
-/// An `Option<File>` containing the file with the maximum value, or `None` if
-/// the input slice is empty.
+/// A `HashMap<String, &File>` mapping each group key to the file with the maximum value.
 pub fn max<'a>(files: &'a HashMap<String, Vec<&'a File>>, aggregator: ComparingAggregator) -> HashMap<String, &'a File> {
     files
         .iter()
@@ -151,20 +152,19 @@ pub fn max<'a>(files: &'a HashMap<String, Vec<&'a File>>, aggregator: ComparingA
 
 /// Finds the file with the minimum value for the specified comparison criterion.
 ///
-/// This function searches through a collection of files and returns the file
-/// that has the lowest value according to the specified `ComparingAggregator`.
+/// This function searches through a collection of grouped files and returns, for each group,
+/// the file that has the lowest value according to the specified `ComparingAggregator`.
 /// For example, it can find the smallest file, the oldest modified file,
-/// or the least recently accessed file.
+/// or the least recently accessed file in each group.
 ///
 /// # Arguments
 ///
-/// * `files` - A slice of files to search through
+/// * `files` - A map from group key to a vector of file references
 /// * `aggregator` - The comparison criterion to use for finding the minimum
 ///
 /// # Returns
 ///
-/// An `Option<File>` containing the file with the minimum value, or `None` if
-/// the input slice is empty.
+/// A `HashMap<String, &File>` mapping each group key to the file with the minimum value.
 pub fn min<'a>(files: &'a HashMap<String, Vec<&'a File>>, aggregator: ComparingAggregator) -> HashMap<String, &'a File> {
     files
         .iter()
@@ -204,18 +204,17 @@ impl Display for ArithmeticAggregator {
 
 /// Calculates the sum of a numeric property across all files.
 ///
-/// This function aggregates a numeric value from all files in the collection
-/// according to the specified `ArithmeticAggregator`. Currently supports
-/// summing file sizes, but can be extended for other numeric properties.
+/// This function aggregates a numeric value from all files in each group according to the specified
+/// `ArithmeticAggregator`. Currently supports summing file sizes, but can be extended for other numeric properties.
 ///
 /// # Arguments
 ///
-/// * `files` - A slice of files to aggregate
+/// * `files` - A map from group key to a vector of file references
 /// * `aggregator` - The arithmetic criterion specifying which property to sum
 ///
 /// # Returns
 ///
-/// The sum as a `u64` value. Returns 0 if the input slice is empty.
+/// A `HashMap<String, u64>` mapping each group key to the sum for that group.
 pub fn sum(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator) -> HashMap<String, u64> {
     files
         .iter()
@@ -228,21 +227,20 @@ pub fn sum(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator
         .collect()
 }
 
-/// Calculates the average of a numeric property across all files.
+/// Calculates the average of a numeric property across all files in each group.
 ///
-/// This function computes the arithmetic mean of a numeric value from all files
-/// in the collection according to the specified `ArithmeticAggregator`. The
-/// calculation uses the `sum` function internally and divides by the count of files.
+/// This function computes the arithmetic mean of a numeric value from all files in each group
+/// according to the specified `ArithmeticAggregator`. The calculation uses the `sum` function
+/// internally and divides by the count of files in each group.
 ///
 /// # Arguments
 ///
-/// * `files` - A slice of files to aggregate
+/// * `files` - A map from group key to a vector of file references
 /// * `aggregator` - The arithmetic criterion specifying which property to average
 ///
 /// # Returns
 ///
-/// An `Option<f64>` containing the average value, or `None` if the input slice
-/// is empty (to avoid division by zero).
+/// A `HashMap<String, f64>` mapping each group key to the average value for that group.
 pub fn avg(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator) -> HashMap<String, f64> {
     let sum = sum(files, aggregator.clone());
 
@@ -260,6 +258,15 @@ pub fn avg(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator
         .collect()
 }
 
+/// Counts the number of files in each group.
+///
+/// # Arguments
+///
+/// * `files` - A map from group key to a vector of file references
+///
+/// # Returns
+///
+/// A `HashMap<String, u64>` mapping each group key to the count of files in that group.
 pub fn count(files: &HashMap<String, Vec<&File>>) -> HashMap<String, u64> {
     files
         .iter()
