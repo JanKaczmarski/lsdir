@@ -23,21 +23,21 @@ pub struct File {
     pub file_type: String,
 }
 
-/// Creates a `File` instance from a given directory entry (`DirEntry`).
-///
-/// This method extracts metadata from the provided `DirEntry`, including the file name,
-/// extension, size, modification time, access time, creation time, and determines whether
-/// the entry is a directory or a file. Returns a `Result` containing the constructed `File`
-/// on success, or an error if any metadata extraction fails.
-///
-/// # Arguments
-///
-/// * `entry` - A reference to a `DirEntry` from which to construct the `File`.
-///
-/// # Errors
-///
-/// Returns an error if retrieving metadata or any of the time fields fails.
 impl File {
+    /// Creates a `File` instance from a given directory entry (`DirEntry`).
+    ///
+    /// This method extracts metadata from the provided `DirEntry`, including the file name,
+    /// extension, size, modification time, access time, creation time, and determines whether
+    /// the entry is a directory or a file. Returns a `Result` containing the constructed `File`
+    /// on success, or an error if any metadata extraction fails.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry` - A reference to a `DirEntry` from which to construct the `File`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if retrieving metadata or any of the time fields fails.
     pub fn from_dir_entry(entry: &DirEntry) -> Result<Self> {
         let metadata = entry.metadata()?;
         let name = entry.file_name().to_string_lossy().into_owned();
