@@ -1,8 +1,19 @@
+use chrono::{DateTime, Datelike, Local, Timelike};
 use std::{collections::HashMap, time::SystemTime};
-use chrono::{DateTime, Local, Datelike, Timelike};
 
 use crate::file::File;
 
+/// Represents different size magnitudes for file size formatting and grouping.
+///
+/// This enum defines the available size units that can be used when converting
+/// file sizes from bytes to human-readable formats or when grouping files by size.
+///
+/// # Variants
+/// - `Bytes`: Raw byte count
+/// - `Kilobytes`: Size in kilobytes (1024 bytes)
+/// - `Megabytes`: Size in megabytes (1024^2 bytes)
+/// - `Gigabytes`: Size in gigabytes (1024^3 bytes)
+/// - `Terabytes`: Size in terabytes (1024^4 bytes)
 #[derive(Debug, Clone)]
 pub enum SizeMagnitude {
     Bytes,
@@ -13,6 +24,19 @@ pub enum SizeMagnitude {
 }
 
 impl SizeMagnitude {
+    /// Converts a size in bytes to a human-readable string format.
+    ///
+    /// This method takes a file size in bytes and converts it to the appropriate
+    /// unit specified by the `SizeMagnitude` variant, formatting it with appropriate
+    /// decimal places and unit suffixes.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The size in bytes to convert
+    ///
+    /// # Returns
+    ///
+    /// A formatted string representing the size with the appropriate unit suffix.
     pub fn convert(&self, size: u64) -> String {
         match self {
             SizeMagnitude::Bytes => format!("{} B", size),
@@ -24,6 +48,22 @@ impl SizeMagnitude {
     }
 }
 
+/// Configuration for time-based grouping of files.
+///
+/// This struct defines which components of a timestamp should be considered
+/// when grouping files by time. Each boolean field determines whether that
+/// time component should be included in the grouping key.
+///
+/// # Fields
+/// - `year`: Include the year in the grouping (4-digit format)
+/// - `month`: Include the month in the grouping (2-digit format)
+/// - `day`: Include the day in the grouping (2-digit format)
+/// - `hour`: Include the hour in the grouping (2-digit format, 24-hour)
+/// - `minute`: Include the minute in the grouping (2-digit format)
+/// - `second`: Include the second in the grouping (2-digit format)
+///
+/// When a component is set to `false`, it will be represented as "*" in the
+/// formatted time string, effectively ignoring that component for grouping purposes.
 #[derive(Debug, Clone)]
 pub struct TimeGrouping {
     pub year: bool,
@@ -35,21 +75,73 @@ pub struct TimeGrouping {
 }
 
 impl TimeGrouping {
+    /// Formats a `SystemTime` according to the grouping configuration.
+    ///
+    /// This method converts a `SystemTime` to a formatted string that includes
+    /// only the time components specified in the `TimeGrouping` configuration.
+    /// Components not included in the grouping are represented with "*".
+    ///
+    /// The format follows the pattern: "DD.MM.YYYY HH:MM:SS" where each component
+    /// is either a zero-padded number or "*" if that component is excluded.
+    ///
+    /// # Arguments
+    ///
+    /// * `time` - The `SystemTime` to format
+    ///
+    /// # Returns
+    ///
+    /// A formatted string representing the time according to the grouping configuration.
     pub fn format(&self, time: SystemTime) -> String {
         let datetime: DateTime<Local> = time.into();
         String::from(format!(
             "{}.{}.{} {}:{}:{}",
-            if self.day { format!("{:02}", datetime.day()) } else { String::from("*") },
-            if self.month { format!("{:02}", datetime.month()) } else { String::from("*") },
-            if self.year { format!("{:04}", datetime.year()) } else { String::from("*") },
-            if self.hour { format!("{:02}", datetime.hour()) } else { String::from("*") },
-            if self.minute { format!("{:02}", datetime.minute()) } else { String::from("*") },
-            if self.second { format!("{:02}", datetime.second()) } else { String::from("*") }
+            if self.day {
+                format!("{:02}", datetime.day())
+            } else {
+                String::from("*")
+            },
+            if self.month {
+                format!("{:02}", datetime.month())
+            } else {
+                String::from("*")
+            },
+            if self.year {
+                format!("{:04}", datetime.year())
+            } else {
+                String::from("*")
+            },
+            if self.hour {
+                format!("{:02}", datetime.hour())
+            } else {
+                String::from("*")
+            },
+            if self.minute {
+                format!("{:02}", datetime.minute())
+            } else {
+                String::from("*")
+            },
+            if self.second {
+                format!("{:02}", datetime.second())
+            } else {
+                String::from("*")
+            }
         ))
     }
 }
 
-
+/// Defines the different ways files can be grouped together.
+///
+/// This enum specifies the various criteria that can be used to group files
+/// when organizing or displaying them. Each variant represents a different
+/// grouping strategy with its own parameters and behavior.
+///
+/// # Variants
+/// - `Extension`: Group files by their file extension
+/// - `Size(SizeMagnitude)`: Group files by size, converted to the specified magnitude
+/// - `Modified(TimeGrouping)`: Group files by modification time using the specified time components
+/// - `Accessed(TimeGrouping)`: Group files by access time using the specified time components
+/// - `Created(TimeGrouping)`: Group files by creation time using the specified time components
+/// - `FileType`: Group files by their type (file, directory, etc.)
 #[derive(Debug, Clone)]
 pub enum GroupingOperator {
     Extension,
@@ -60,45 +152,44 @@ pub enum GroupingOperator {
     FileType,
 }
 
-pub fn group(
-    files: &[File],
-    operator: GroupingOperator,
-) -> Vec<Vec<&File>> {
+/// Groups a collection of files according to the specified grouping operator.
+///
+/// This function takes a slice of files and groups them based on the provided
+/// `GroupingOperator`. Files with the same grouping key (as determined by the
+/// operator) will be placed in the same group.
+///
+/// # Arguments
+///
+/// * `files` - A slice of files to be grouped
+/// * `operator` - The grouping criteria to use for organizing the files
+///
+/// # Returns
+///
+/// A vector of vectors, where each inner vector contains files that belong
+/// to the same group. The order of groups is not guaranteed.
+pub fn group(files: &[File], operator: GroupingOperator) -> Vec<Vec<&File>> {
     let mut groups: HashMap<String, Vec<&File>> = HashMap::new();
 
     for file in files {
         let group_key = match &operator {
             GroupingOperator::Extension => file.extension.clone(),
-            GroupingOperator::Size(magnitude) => {
-                magnitude.convert(file.size)
-            }
-            GroupingOperator::Modified(time_grouping) => {
-                time_grouping.format(file.modified)
-            }
-            GroupingOperator::Accessed(time_grouping) => {
-                time_grouping.format(file.accessed)
-            }
-            GroupingOperator::Created(time_grouping) => {
-                time_grouping.format(file.created)
-            }
+            GroupingOperator::Size(magnitude) => magnitude.convert(file.size),
+            GroupingOperator::Modified(time_grouping) => time_grouping.format(file.modified),
+            GroupingOperator::Accessed(time_grouping) => time_grouping.format(file.accessed),
+            GroupingOperator::Created(time_grouping) => time_grouping.format(file.created),
             GroupingOperator::FileType => file.file_type.clone(),
         };
 
-        groups.entry(group_key)
-            .or_insert_with(Vec::new)
-            .push(file);
+        groups.entry(group_key).or_insert_with(Vec::new).push(file);
     }
 
-    groups.into_iter()
-        .map(|(_, group)| group)
-        .collect()
+    groups.into_iter().map(|(_, group)| group).collect()
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, Duration};
+    use std::time::{Duration, SystemTime};
 
     #[derive(Debug, Clone)]
     pub struct MockFile {
@@ -166,7 +257,8 @@ mod tests {
         let groups = group(&files, GroupingOperator::Extension);
         // Should be 2 groups: "txt" and "rs"
         assert_eq!(groups.len(), 2);
-        let extensions: Vec<String> = groups.iter()
+        let extensions: Vec<String> = groups
+            .iter()
             .flat_map(|g| g.iter().map(|f| f.extension.clone()))
             .collect();
         assert!(extensions.contains(&"txt".to_string()));

@@ -1,8 +1,18 @@
-use std::time::SystemTime;
 use std::fs::DirEntry;
 use std::io::Result;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents a file with its metadata.
+///
+/// # Fields
+/// - `name`: The name of the file (excluding the path).
+/// - `extension`: The file's extension (e.g., "txt", "rs").
+/// - `size`: The size of the file in bytes.
+/// - `modified`: The last modification time of the file.
+/// - `accessed`: The last access time of the file.
+/// - `created`: The creation time of the file.
+/// - `file_type`: The type of the file (e.g., "file", "directory", "symlink").
 pub struct File {
     pub name: String,
     pub extension: String,
@@ -13,15 +23,31 @@ pub struct File {
     pub file_type: String,
 }
 
+/// Creates a `File` instance from a given directory entry (`DirEntry`).
+///
+/// This method extracts metadata from the provided `DirEntry`, including the file name,
+/// extension, size, modification time, access time, creation time, and determines whether
+/// the entry is a directory or a file. Returns a `Result` containing the constructed `File`
+/// on success, or an error if any metadata extraction fails.
+///
+/// # Arguments
+///
+/// * `entry` - A reference to a `DirEntry` from which to construct the `File`.
+///
+/// # Errors
+///
+/// Returns an error if retrieving metadata or any of the time fields fails.
 impl File {
     pub fn from_dir_entry(entry: &DirEntry) -> Result<Self> {
         let metadata = entry.metadata()?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        let extension = entry.path().extension()
+        let extension = entry
+            .path()
+            .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("")
             .to_string();
-        
+
         Ok(Self {
             name,
             extension,
@@ -29,7 +55,11 @@ impl File {
             modified: metadata.modified()?,
             accessed: metadata.accessed()?,
             created: metadata.created()?,
-            file_type: if metadata.is_dir() { "Directory".to_string() } else { "File".to_string() },
+            file_type: if metadata.is_dir() {
+                "Directory".to_string()
+            } else {
+                "File".to_string()
+            },
         })
     }
 }

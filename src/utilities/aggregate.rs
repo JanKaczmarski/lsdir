@@ -2,6 +2,17 @@ use std::time::SystemTime;
 
 use crate::file::File;
 
+/// Defines comparison criteria for file aggregation operations.
+///
+/// This enum specifies which file attribute should be used when performing
+/// comparison-based aggregations such as finding minimum or maximum values.
+/// Each variant corresponds to a specific file property that can be compared.
+///
+/// # Variants
+/// - `Size`: Compare files by their size in bytes
+/// - `Modified`: Compare files by their last modification time
+/// - `Accessed`: Compare files by their last access time
+/// - `Created`: Compare files by their creation time
 #[derive(Debug, Clone)]
 pub enum ComparingAggregator {
     Size,
@@ -11,6 +22,21 @@ pub enum ComparingAggregator {
 }
 
 impl ComparingAggregator {
+    /// Compares two files based on the specified aggregation criterion.
+    ///
+    /// This method performs a comparison between two files using the attribute
+    /// specified by the enum variant. It returns a `std::cmp::Ordering` that
+    /// indicates the relative ordering of the two files.
+    ///
+    /// # Arguments
+    ///
+    /// * `a` - The first file to compare
+    /// * `b` - The second file to compare
+    ///
+    /// # Returns
+    ///
+    /// A `std::cmp::Ordering` indicating whether the first file is less than,
+    /// equal to, or greater than the second file according to the specified criterion.
     pub fn compare(&self, a: &File, b: &File) -> std::cmp::Ordering {
         match self {
             ComparingAggregator::Size => a.size.cmp(&b.size),
@@ -21,31 +47,101 @@ impl ComparingAggregator {
     }
 }
 
-
-
+/// Finds the file with the maximum value for the specified comparison criterion.
+///
+/// This function searches through a collection of files and returns the file
+/// that has the highest value according to the specified `ComparingAggregator`.
+/// For example, it can find the largest file, the most recently modified file,
+/// or the most recently accessed file.
+///
+/// # Arguments
+///
+/// * `files` - A slice of files to search through
+/// * `aggregator` - The comparison criterion to use for finding the maximum
+///
+/// # Returns
+///
+/// An `Option<File>` containing the file with the maximum value, or `None` if
+/// the input slice is empty.
 pub fn max(files: &[File], aggregator: ComparingAggregator) -> Option<File> {
-    files.iter().cloned().
-        max_by(|a, b| aggregator.compare(a, b))
+    files
+        .iter()
+        .cloned()
+        .max_by(|a, b| aggregator.compare(a, b))
 }
 
+/// Finds the file with the minimum value for the specified comparison criterion.
+///
+/// This function searches through a collection of files and returns the file
+/// that has the lowest value according to the specified `ComparingAggregator`.
+/// For example, it can find the smallest file, the oldest modified file,
+/// or the least recently accessed file.
+///
+/// # Arguments
+///
+/// * `files` - A slice of files to search through
+/// * `aggregator` - The comparison criterion to use for finding the minimum
+///
+/// # Returns
+///
+/// An `Option<File>` containing the file with the minimum value, or `None` if
+/// the input slice is empty.
 pub fn min(files: &[File], aggregator: ComparingAggregator) -> Option<File> {
-    files.iter().cloned().
-        min_by(|a, b| aggregator.compare(a, b))
+    files
+        .iter()
+        .cloned()
+        .min_by(|a, b| aggregator.compare(a, b))
 }
 
+/// Defines arithmetic aggregation criteria for file operations.
+///
+/// This enum specifies which numeric file attribute should be used when
+/// performing arithmetic operations such as sum or average calculations.
+/// Currently focused on size-based calculations but can be extended for
+/// other numeric properties.
+///
+/// # Variants
+/// - `Size`: Perform arithmetic operations on file sizes in bytes
 #[derive(Debug, Clone)]
 pub enum ArithmeticAggregator {
     Size,
 }
 
+/// Calculates the sum of a numeric property across all files.
+///
+/// This function aggregates a numeric value from all files in the collection
+/// according to the specified `ArithmeticAggregator`. Currently supports
+/// summing file sizes, but can be extended for other numeric properties.
+///
+/// # Arguments
+///
+/// * `files` - A slice of files to aggregate
+/// * `aggregator` - The arithmetic criterion specifying which property to sum
+///
+/// # Returns
+///
+/// The sum as a `u64` value. Returns 0 if the input slice is empty.
 pub fn sum(files: &[File], aggregator: ArithmeticAggregator) -> u64 {
-    files.iter().fold(0, |acc, file| {
-        match aggregator {
-            ArithmeticAggregator::Size => acc + file.size,
-        }
+    files.iter().fold(0, |acc, file| match aggregator {
+        ArithmeticAggregator::Size => acc + file.size,
     })
 }
 
+/// Calculates the average of a numeric property across all files.
+///
+/// This function computes the arithmetic mean of a numeric value from all files
+/// in the collection according to the specified `ArithmeticAggregator`. The
+/// calculation uses the `sum` function internally and divides by the count of files.
+///
+/// # Arguments
+///
+/// * `files` - A slice of files to aggregate
+/// * `aggregator` - The arithmetic criterion specifying which property to average
+///
+/// # Returns
+///
+/// An `Option<f64>` containing the average value, or `None` if the input slice
+/// is empty (to avoid division by zero).
 pub fn average(files: &[File], aggregator: ArithmeticAggregator) -> Option<f64> {
     if files.is_empty() {
         return None;
@@ -57,7 +153,7 @@ pub fn average(files: &[File], aggregator: ArithmeticAggregator) -> Option<f64> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, Duration};
+    use std::time::{Duration, SystemTime};
 
     fn sample_files() -> Vec<File> {
         let now = SystemTime::now();
