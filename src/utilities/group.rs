@@ -76,9 +76,9 @@ pub struct TimeGrouping {
 }
 
 impl TimeGrouping {
-    /// Formats a `SystemTime` according to the grouping configuration.
+    /// Formats a `DateTime<Local>` according to the grouping configuration.
     ///
-    /// This method converts a `SystemTime` to a formatted string that includes
+    /// This method converts a `DateTime<Local>` to a formatted string that includes
     /// only the time components specified in the `TimeGrouping` configuration.
     /// Components not included in the grouping are represented with "*".
     ///
@@ -87,7 +87,7 @@ impl TimeGrouping {
     ///
     /// # Arguments
     ///
-    /// * `time` - The `SystemTime` to format
+    /// * `datetime` - The `DateTime<Local>` to format
     ///
     /// # Returns
     ///
