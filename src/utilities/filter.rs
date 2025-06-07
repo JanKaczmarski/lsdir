@@ -55,9 +55,6 @@ impl Comparison {
     }
 }
 
-
-
-
 /// Defines various filtering predicates for files.
 ///
 /// This enum represents different criteria that can be used to filter files.
@@ -68,9 +65,9 @@ impl Comparison {
 /// - `Name(String)`: Filter by file name using exact match or regex pattern
 /// - `Extension(String)`: Filter by file extension (exact match)
 /// - `Size(u64, Comparison)`: Filter by file size with comparison operator
-/// - `Modified(SystemTime, Comparison)`: Filter by modification time with comparison
-/// - `Accessed(SystemTime, Comparison)`: Filter by access time with comparison
-/// - `Created(SystemTime, Comparison)`: Filter by creation time with comparison
+/// - `Modified(DateTime<Local>, Comparison)`: Filter by modification time with comparison
+/// - `Accessed(DateTime<Local>, Comparison)`: Filter by access time with comparison
+/// - `Created(DateTime<Local>, Comparison)`: Filter by creation time with comparison
 /// - `FileType(String)`: Filter by file type (e.g., "File", "Directory")
 ///
 /// # Name Filtering Behavior
@@ -151,8 +148,6 @@ impl FromStr for Predicate {
     }
 }
 
-
-
 /// Filters a collection of files based on the specified predicate.
 ///
 /// This function takes a slice of file references and applies the given predicate
@@ -161,7 +156,7 @@ impl FromStr for Predicate {
 ///
 /// # Arguments
 ///
-/// * `paths` - A slice of references to `File` objects to be filtered
+/// * `files` - A slice of references to `File` objects to be filtered
 /// * `predicate` - The filtering criterion to apply to each file
 ///
 /// # Returns
