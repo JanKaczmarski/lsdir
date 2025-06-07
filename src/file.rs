@@ -1,6 +1,6 @@
-use std::fs::DirEntry;
+use std::{fmt::Display, fs::DirEntry};
 use std::io::Result;
-use std::time::SystemTime;
+use chrono::{DateTime, Local};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Represents a file with its metadata.
@@ -17,9 +17,9 @@ pub struct File {
     pub name: String,
     pub extension: String,
     pub size: u64,
-    pub modified: SystemTime,
-    pub accessed: SystemTime,
-    pub created: SystemTime,
+    pub modified: DateTime<Local>,
+    pub accessed: DateTime<Local>,
+    pub created: DateTime<Local>,
     pub file_type: String,
 }
 
@@ -52,14 +52,29 @@ impl File {
             name,
             extension,
             size: metadata.len(),
-            modified: metadata.modified()?,
-            accessed: metadata.accessed()?,
-            created: metadata.created()?,
+            modified: DateTime::<Local>::from(metadata.modified()?),
+            accessed: DateTime::<Local>::from(metadata.accessed()?),
+            created: DateTime::<Local>::from(metadata.created()?),
             file_type: if metadata.is_dir() {
                 "Directory".to_string()
             } else {
                 "File".to_string()
             },
         })
+    }
+}
+
+impl Display for File {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:<19} | {:<19} | {:<19} | {:<10} | {:>10} | {:<30}",
+            self.modified.format("%Y-%m-%d %H:%M:%S"),
+            self.accessed.format("%Y-%m-%d %H:%M:%S"),
+            self.created.format("%Y-%m-%d %H:%M:%S"),
+            self.file_type,
+            self.size,
+            self.name,
+        )
     }
 }

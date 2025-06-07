@@ -1,5 +1,6 @@
 use chrono::{DateTime, Datelike, Local, Timelike};
-use std::{collections::HashMap, time::SystemTime};
+use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::file::File;
 
@@ -91,8 +92,7 @@ impl TimeGrouping {
     /// # Returns
     ///
     /// A formatted string representing the time according to the grouping configuration.
-    pub fn format(&self, time: SystemTime) -> String {
-        let datetime: DateTime<Local> = time.into();
+    pub fn format(&self, datetime: DateTime<Local>) -> String {
         String::from(format!(
             "{}.{}.{} {}:{}:{}",
             if self.day {
@@ -152,6 +152,65 @@ pub enum GroupingOperator {
     FileType,
 }
 
+impl FromStr for GroupingOperator {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<String> = s
+            .splitn(7, ',')
+            .map(|s| s.trim().to_lowercase())
+            .collect();
+        if parts.is_empty() {
+            return Err("Invalid grouping operator".to_string());
+        }
+
+        if parts[0] == "extension" || parts[0] == "ext" || parts[0] == "e" {
+            return Ok(GroupingOperator::Extension);
+        } else if parts[0] == "filetype" || parts[0] == "ftype" {
+            return Ok(GroupingOperator::FileType);
+        }
+
+        if parts.len() < 2 {
+            return Err("Invalid grouping operator format".to_string());
+        }
+
+        if parts[0] == "size" || parts[0] == "s" {
+            let magnitude = match parts[1].as_str() {
+                "bytes" | "b" => SizeMagnitude::Bytes,
+                "kilobytes" | "kb" => SizeMagnitude::Kilobytes,
+                "megabytes" | "mb" => SizeMagnitude::Megabytes,
+                "gigabytes" | "gb" => SizeMagnitude::Gigabytes,
+                "terabytes" | "tb" => SizeMagnitude::Terabytes,
+                _ => return Err("Invalid size magnitude".to_string()),
+            };
+            return Ok(GroupingOperator::Size(magnitude));
+        }
+
+        let time_grouping = TimeGrouping {
+                year: parts.iter().skip(1).any(|s| s == "y" || s == "year"),
+                month: parts.iter().skip(1).any(|s| s == "m" || s == "month"),
+                day: parts.iter().skip(1).any(|s| s == "d" || s == "day"),
+                hour: parts.iter().skip(1).any(|s| s == "h" || s == "hour"),
+                minute: parts.iter().skip(1).any(|s| s == "min" || s == "minute"),
+                second: parts.iter().skip(1).any(|s| s == "s" || s == "sec" || s == "second"),
+            };
+            
+        if parts[0] == "modified" || parts[0] == "mod" || parts[0] == "m" {
+            return Ok(GroupingOperator::Modified(time_grouping));
+        }
+
+        if parts[0] == "accessed" || parts[0] == "acc" || parts[0] == "a" {
+            return Ok(GroupingOperator::Accessed(time_grouping));
+        }
+
+        if parts[0] == "created" || parts[0] == "cre" || parts[0] == "c" {
+            return Ok(GroupingOperator::Created(time_grouping));
+        }
+
+        Err("Unsupported grouping operator".to_string())
+
+    }   
+}
+
 /// Groups a collection of files according to the specified grouping operator.
 ///
 /// This function takes a slice of files and groups them based on the provided
@@ -167,7 +226,7 @@ pub enum GroupingOperator {
 ///
 /// A vector of vectors, where each inner vector contains files that belong
 /// to the same group. The order of groups is not guaranteed.
-pub fn group(files: &[File], operator: GroupingOperator) -> Vec<Vec<&File>> {
+pub fn group<'a>(files: &[&'a File], operator: GroupingOperator) -> HashMap<String, Vec<&'a File>> {
     let mut groups: HashMap<String, Vec<&File>> = HashMap::new();
 
     for file in files {
@@ -183,42 +242,22 @@ pub fn group(files: &[File], operator: GroupingOperator) -> Vec<Vec<&File>> {
         groups.entry(group_key).or_insert_with(Vec::new).push(file);
     }
 
-    groups.into_iter().map(|(_, group)| group).collect()
+    groups
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, SystemTime};
+    use chrono::{DateTime, Local, TimeZone};
 
-    #[derive(Debug, Clone)]
-    pub struct MockFile {
-        pub extension: String,
-        pub size: u64,
-        pub modified: SystemTime,
-        pub accessed: SystemTime,
-        pub created: SystemTime,
-        pub file_type: String,
-    }
-
-    // Implement conversion from MockFile to File if needed, or use File directly if possible.
-    impl From<&MockFile> for File {
-        fn from(m: &MockFile) -> Self {
-            File {
-                name: "mock_file".to_string(),
-                extension: m.extension.clone(),
-                size: m.size,
-                modified: m.modified,
-                accessed: m.accessed,
-                created: m.created,
-                file_type: m.file_type.clone(),
-            }
-        }
+    fn dt(secs: i64) -> DateTime<Local> {
+        // Helper to create DateTime<Local> from UNIX timestamp
+        Local.timestamp_opt(secs, 0).unwrap()
     }
 
     fn sample_files() -> Vec<File> {
-        let now = SystemTime::now();
-        let earlier = now - Duration::from_secs(3600);
+        let now = dt(1_000_000);
+        let earlier = dt(1_000_000 - 3600);
 
         vec![
             File {
@@ -254,21 +293,19 @@ mod tests {
     #[test]
     fn test_group_by_extension() {
         let files = sample_files();
-        let groups = group(&files, GroupingOperator::Extension);
+        let file_refs: Vec<&File> = files.iter().collect();
+        let groups = group(&file_refs, GroupingOperator::Extension);
         // Should be 2 groups: "txt" and "rs"
         assert_eq!(groups.len(), 2);
-        let extensions: Vec<String> = groups
-            .iter()
-            .flat_map(|g| g.iter().map(|f| f.extension.clone()))
-            .collect();
-        assert!(extensions.contains(&"txt".to_string()));
-        assert!(extensions.contains(&"rs".to_string()));
+        assert!(groups.contains_key("txt"));
+        assert!(groups.contains_key("rs"));
     }
 
     #[test]
     fn test_group_by_size() {
         let files = sample_files();
-        let groups = group(&files, GroupingOperator::Size(SizeMagnitude::Kilobytes));
+        let file_refs: Vec<&File> = files.iter().collect();
+        let groups = group(&file_refs, GroupingOperator::Size(SizeMagnitude::Kilobytes));
         // Should be 3 groups, as all sizes are different in KB
         assert_eq!(groups.len(), 3);
     }
@@ -276,15 +313,18 @@ mod tests {
     #[test]
     fn test_group_by_file_type() {
         let files = sample_files();
-        let groups = group(&files, GroupingOperator::FileType);
+        let file_refs: Vec<&File> = files.iter().collect();
+        let groups = group(&file_refs, GroupingOperator::FileType);
         // All are "file"
         assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].len(), 3);
+        let group = groups.get("file").unwrap();
+        assert_eq!(group.len(), 3);
     }
 
     #[test]
     fn test_group_by_modified_time_day() {
         let files = sample_files();
+        let file_refs: Vec<&File> = files.iter().collect();
         let grouping = TimeGrouping {
             year: true,
             month: true,
@@ -293,7 +333,7 @@ mod tests {
             minute: false,
             second: false,
         };
-        let groups = group(&files, GroupingOperator::Modified(grouping));
+        let groups = group(&file_refs, GroupingOperator::Modified(grouping));
         // Should be 1 or 2 groups depending on the day difference
         assert!(groups.len() >= 1);
     }

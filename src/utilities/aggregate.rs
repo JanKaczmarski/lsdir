@@ -1,6 +1,51 @@
-use std::time::SystemTime;
-
 use crate::file::File;
+
+use std::collections::HashMap; 
+use std::fmt::Display; 
+use std::str::FromStr;
+
+
+#[derive(Debug, Clone)]
+pub enum AggregateFunction {
+    Count,
+    Sum(ArithmeticAggregator),
+    Avg(ArithmeticAggregator),
+    Max(ComparingAggregator),
+    Min(ComparingAggregator),
+}
+
+impl FromStr for AggregateFunction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.splitn(2, ',').collect();
+        match parts[0].to_lowercase().as_str() {
+            "count" | "c" => Ok(AggregateFunction::Count),
+            "sum" | "s" => {
+                Ok(AggregateFunction::Sum(ArithmeticAggregator::Size))
+            }
+            "average" | "avg" | "a" => {
+                Ok(AggregateFunction::Avg(ArithmeticAggregator::Size))
+            }
+            "max" => {
+                if parts.len() < 2 {
+                    return Err("Missing argument for max".to_string());
+                }
+                let aggregator = ComparingAggregator::from_str(parts[1])?;
+                Ok(AggregateFunction::Max(aggregator))
+            }
+            "min" => {
+                if parts.len() < 2 {
+                    return Err("Missing argument for min".to_string());
+                }
+                let aggregator = ComparingAggregator::from_str(parts[1])?;
+                Ok(AggregateFunction::Min(aggregator))
+            }
+            _ => Err(format!("Unknown aggregate function: {}", s)),
+        }
+    }
+    
+}
 
 /// Defines comparison criteria for file aggregation operations.
 ///
@@ -47,6 +92,33 @@ impl ComparingAggregator {
     }
 }
 
+impl FromStr for ComparingAggregator {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "size" | "s" => Ok(ComparingAggregator::Size),
+            "modified" | "mod" | "m" => Ok(ComparingAggregator::Modified),
+            "accessed" | "acc" | "a" => Ok(ComparingAggregator::Accessed),
+            "created" | "cre" | "c" => Ok(ComparingAggregator::Created),
+            _ => Err(format!("Unknown comparing aggregator: {}", s)),
+        }
+    }
+}
+
+impl Display for ComparingAggregator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            ComparingAggregator::Size => "Size",
+            ComparingAggregator::Modified => "Modified",
+            ComparingAggregator::Accessed => "Accessed",
+            ComparingAggregator::Created => "Created",
+        };
+        write!(f, "{}", name)
+    }
+}
+
+
 /// Finds the file with the maximum value for the specified comparison criterion.
 ///
 /// This function searches through a collection of files and returns the file
@@ -63,11 +135,18 @@ impl ComparingAggregator {
 ///
 /// An `Option<File>` containing the file with the maximum value, or `None` if
 /// the input slice is empty.
-pub fn max(files: &[File], aggregator: ComparingAggregator) -> Option<File> {
+pub fn max<'a>(files: &'a HashMap<String, Vec<&'a File>>, aggregator: ComparingAggregator) -> HashMap<String, &'a File> {
     files
         .iter()
-        .cloned()
-        .max_by(|a, b| aggregator.compare(a, b))
+        .map(|(key, file_list)| {
+            let max_file = file_list
+                .iter()
+                .cloned()
+                .max_by(|a, b| aggregator.compare(a, b))
+                .unwrap();
+            (key.clone(), max_file)
+        })
+        .collect()
 }
 
 /// Finds the file with the minimum value for the specified comparison criterion.
@@ -86,11 +165,18 @@ pub fn max(files: &[File], aggregator: ComparingAggregator) -> Option<File> {
 ///
 /// An `Option<File>` containing the file with the minimum value, or `None` if
 /// the input slice is empty.
-pub fn min(files: &[File], aggregator: ComparingAggregator) -> Option<File> {
+pub fn min<'a>(files: &'a HashMap<String, Vec<&'a File>>, aggregator: ComparingAggregator) -> HashMap<String, &'a File> {
     files
         .iter()
-        .cloned()
-        .min_by(|a, b| aggregator.compare(a, b))
+        .map(|(key, file_list)| {
+            let min_file = file_list
+                .iter()
+                .cloned()
+                .min_by(|a, b| aggregator.compare(a, b))
+                .unwrap();
+            (key.clone(), min_file)
+        })
+        .collect()
 }
 
 /// Defines arithmetic aggregation criteria for file operations.
@@ -107,6 +193,15 @@ pub enum ArithmeticAggregator {
     Size,
 }
 
+impl Display for ArithmeticAggregator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            ArithmeticAggregator::Size => "Size",
+        };
+        write!(f, "{}", name)
+    }
+}
+
 /// Calculates the sum of a numeric property across all files.
 ///
 /// This function aggregates a numeric value from all files in the collection
@@ -121,10 +216,16 @@ pub enum ArithmeticAggregator {
 /// # Returns
 ///
 /// The sum as a `u64` value. Returns 0 if the input slice is empty.
-pub fn sum(files: &[File], aggregator: ArithmeticAggregator) -> u64 {
-    files.iter().fold(0, |acc, file| match aggregator {
-        ArithmeticAggregator::Size => acc + file.size,
-    })
+pub fn sum(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator) -> HashMap<String, u64> {
+    files
+        .iter()
+        .map(|(key, file_list)| {
+            let total: u64 = file_list.iter().map(|file| match aggregator {
+                ArithmeticAggregator::Size => file.size,
+            }).sum();
+            (key.clone(), total)
+        })
+        .collect()
 }
 
 /// Calculates the average of a numeric property across all files.
@@ -142,23 +243,44 @@ pub fn sum(files: &[File], aggregator: ArithmeticAggregator) -> u64 {
 ///
 /// An `Option<f64>` containing the average value, or `None` if the input slice
 /// is empty (to avoid division by zero).
-pub fn average(files: &[File], aggregator: ArithmeticAggregator) -> Option<f64> {
-    if files.is_empty() {
-        return None;
-    }
-    let total = sum(files, aggregator);
-    Some(total as f64 / files.len() as f64)
+pub fn avg(files: &HashMap<String, Vec<&File>>, aggregator: ArithmeticAggregator) -> HashMap<String, f64> {
+    let sum = sum(files, aggregator.clone());
+
+    files
+        .iter()
+        .map(|(key, file_list)| {
+            let count = file_list.len() as f64;
+            if count == 0.0 {
+                (key.clone(), 0.0) // Avoid division by zero
+            } else {
+                let total = sum.get(key).unwrap_or(&0);
+                (key.clone(), *total as f64 / count)
+            }
+        })
+        .collect()
+}
+
+pub fn count(files: &HashMap<String, Vec<&File>>) -> HashMap<String, u64> {
+    files
+        .iter()
+        .map(|(key, file_list)| (key.clone(), file_list.len() as u64))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, SystemTime};
+    use chrono::{DateTime, Local, TimeZone};
+    use std::collections::HashMap;
+
+    fn dt(secs: i64) -> DateTime<Local> {
+        Local.timestamp_opt(secs, 0).unwrap()
+    }
 
     fn sample_files() -> Vec<File> {
-        let now = SystemTime::now();
-        let earlier = now - Duration::from_secs(3600);
-        let oldest = now - Duration::from_secs(7200);
+        let now = dt(1_000_000);
+        let earlier = dt(1_000_000 - 3600);
+        let oldest = dt(1_000_000 - 7200);
 
         vec![
             File {
@@ -191,53 +313,63 @@ mod tests {
         ]
     }
 
+    fn group_by_ext(files: &[File]) -> HashMap<String, Vec<&File>> {
+        let mut map: HashMap<String, Vec<&File>> = HashMap::new();
+        for file in files {
+            map.entry(file.extension.clone()).or_default().push(file);
+        }
+        map
+    }
+
     #[test]
     fn test_max_size() {
         let files = sample_files();
-        let max_file = max(&files, ComparingAggregator::Size).unwrap();
-        assert_eq!(max_file.size, 4096);
+        let grouped = group_by_ext(&files);
+        let max_map = max(&grouped, ComparingAggregator::Size);
+        assert_eq!(max_map["txt"].size, 4096);
+        assert_eq!(max_map["rs"].size, 2048);
     }
 
     #[test]
     fn test_min_size() {
         let files = sample_files();
-        let min_file = min(&files, ComparingAggregator::Size).unwrap();
-        assert_eq!(min_file.size, 1000);
-    }
-
-    #[test]
-    fn test_max_modified() {
-        let files = sample_files();
-        let max_file = max(&files, ComparingAggregator::Modified).unwrap();
-        // The most recently modified file is the first one
-        assert_eq!(max_file.name, "file1.txt");
-    }
-
-    #[test]
-    fn test_min_modified() {
-        let files = sample_files();
-        let min_file = min(&files, ComparingAggregator::Modified).unwrap();
-        // The oldest modified file is the last one
-        assert_eq!(min_file.name, "file3.txt");
+        let grouped = group_by_ext(&files);
+        let min_map = min(&grouped, ComparingAggregator::Size);
+        assert_eq!(min_map["txt"].size, 1000);
+        assert_eq!(min_map["rs"].size, 2048);
     }
 
     #[test]
     fn test_sum_size() {
         let files = sample_files();
-        let total = sum(&files, ArithmeticAggregator::Size);
-        assert_eq!(total, 1000 + 2048 + 4096);
+        let grouped = group_by_ext(&files);
+        let sum_map = sum(&grouped, ArithmeticAggregator::Size);
+        assert_eq!(sum_map["txt"], 1000 + 4096);
+        assert_eq!(sum_map["rs"], 2048);
     }
 
     #[test]
     fn test_average_size() {
         let files = sample_files();
-        let avg = average(&files, ArithmeticAggregator::Size).unwrap();
-        assert!((avg - ((1000.0 + 2048.0 + 4096.0) / 3.0)).abs() < 1e-6);
+        let grouped = group_by_ext(&files);
+        let avg_map = avg(&grouped, ArithmeticAggregator::Size);
+        assert!((avg_map["txt"] - ((1000.0 + 4096.0) / 2.0)).abs() < 1e-6);
+        assert!((avg_map["rs"] - 2048.0).abs() < 1e-6);
     }
 
     #[test]
-    fn test_average_empty() {
-        let files: Vec<File> = vec![];
-        assert_eq!(average(&files, ArithmeticAggregator::Size), None);
+    fn test_count() {
+        let files = sample_files();
+        let grouped = group_by_ext(&files);
+        let count_map = count(&grouped);
+        assert_eq!(count_map["txt"], 2);
+        assert_eq!(count_map["rs"], 1);
+    }
+
+    #[test]
+    fn test_average_empty_group() {
+        let grouped: HashMap<String, Vec<&File>> = HashMap::new();
+        let avg_map = avg(&grouped, ArithmeticAggregator::Size);
+        assert!(avg_map.is_empty());
     }
 }

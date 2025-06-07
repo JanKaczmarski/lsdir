@@ -1,8 +1,62 @@
 use regex::Regex;
-use std::time::SystemTime;
-
 use crate::file::File;
-use crate::utilities::Comparison;
+
+use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, TimeZone};
+use clap::ValueEnum;
+use std::str::FromStr;
+
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum Comparison {
+    /// Not equal to
+    Ne,
+    /// Equal to
+    Eq,
+    /// Greater than
+    Gt,
+    /// Greater than or equal
+    Ge,
+    /// Less than
+    Lt,
+    /// Less than or equal
+    Le,
+}
+
+impl FromStr for Comparison {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "eq" | "equal" | "equals" => Ok(Comparison::Eq),
+            "ne" | "not_equal" | "neq" => Ok(Comparison::Ne),
+            "gt" | "greater" | "greater_than" => Ok(Comparison::Gt),
+            "ge" | "gte" | "greater_equal" => Ok(Comparison::Ge),
+            "lt" | "less" | "less_than" => Ok(Comparison::Lt),
+            "le" | "lte" | "less_equal" => Ok(Comparison::Le),
+            _ => Err(format!("Invalid comparison operator: {}", s)),
+        }
+    }
+}
+
+impl Comparison {
+    /// Compares two values using the specified comparison operator.
+    /// This method performs a comparison between two values of the same type
+    /// using the comparison operation defined by the enum variant. The values
+    /// must implement both `PartialEq` and `PartialOrd` traits.
+    pub fn compare<T: PartialEq + PartialOrd>(&self, a: T, b: T) -> bool {
+        match self {
+            Comparison::Ne => a != b,
+            Comparison::Eq => a == b,
+            Comparison::Gt => a > b,
+            Comparison::Ge => a >= b,
+            Comparison::Lt => a < b,
+            Comparison::Le => a <= b,
+        }
+    }
+}
+
+
+
 
 /// Defines various filtering predicates for files.
 ///
@@ -29,11 +83,75 @@ pub enum Predicate {
     Name(String),
     Extension(String),
     Size(u64, Comparison),
-    Modified(SystemTime, Comparison),
-    Accessed(SystemTime, Comparison),
-    Created(SystemTime, Comparison),
+    Modified(DateTime<Local>, Comparison),
+    Accessed(DateTime<Local>, Comparison),
+    Created(DateTime<Local>, Comparison),
     FileType(String),
 }
+
+impl FromStr for Predicate {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Predicate, Self::Err> {
+        let mut parts: Vec<String> = s.splitn(3, ',').map(|part| part.trim().to_lowercase()).collect();
+        
+        if parts.len() == 2 {
+            parts.insert(1, "eq".to_string());
+        }
+
+        if parts.len() != 3 {
+            return Err(format!(
+                "Invalid predicate format. Expected: field,operator,value, got: {}",
+                s
+            ));
+        }
+
+        let operator = parts[1]
+            .parse::<Comparison>()
+            .map_err(|_| format!("Invalid operator: {}", parts[1]))?;
+
+        let parse_datetime = |date_str: &str| {
+            if let Ok(naive_dt) = NaiveDateTime::parse_from_str(date_str, "%d.%m.%Y %H:%M") {
+                return Ok(Local.from_local_datetime(&naive_dt)
+                    .single()
+                    .ok_or_else(|| "Ambiguous or invalid local datetime".to_string())?);
+            }
+            // Try time only, use today's date
+            if let Ok(naive_time) = NaiveTime::parse_from_str(date_str, "%H:%M") {
+                let today = Local::now().date_naive();
+                let naive_dt = NaiveDateTime::new(today, naive_time);
+                return Ok(Local.from_local_datetime(&naive_dt)
+                    .single()
+                    .ok_or_else(|| "Ambiguous or invalid local datetime".to_string())?);
+            }
+            Err(format!("Invalid date/time format: {}", s))
+        };
+
+
+        match (parts[0].as_str(), operator, parts[2].as_str()) {
+            ("name" | "n", Comparison::Eq, name) => Ok(Predicate::Name(name.to_string())),
+            ("extension" | "ext" | "e", Comparison::Eq, ext) => Ok(Predicate::Extension(ext.to_string())),
+            ("size" | "s", operator, size_str) => {
+                let size = size_str.parse::<u64>().map_err(|_| format!("Invalid size value: {}", size_str))?;
+                Ok(Predicate::Size(size, operator))
+            }
+            ("modified" | "mod" | "m", operator, time_str) => {
+                Ok(Predicate::Modified(parse_datetime(time_str)?, operator))
+            }
+            ("accessed" | "acc" | "a", operator, time_str) => {
+                Ok(Predicate::Accessed(parse_datetime(time_str)?, operator))
+            }
+            ("created" | "cre" | "c", operator, time_str) => {
+                Ok(Predicate::Created(parse_datetime(time_str)?, operator))
+            }
+            ("filetype" | "file_type" | "type" | "f" | "t", Comparison::Eq, file_type) => Ok(Predicate::FileType(file_type.to_string())),
+            _ => Err(format!("Invalid predicate: {}", s)),
+        }
+
+
+    }
+}
+
+
 
 /// Filters a collection of files based on the specified predicate.
 ///
@@ -57,8 +175,8 @@ pub enum Predicate {
 /// string as a regular expression. If successful, it uses regex matching against
 /// the file name. If regex compilation fails (due to invalid regex syntax), it
 /// falls back to exact string comparison.
-pub fn filter<'a>(paths: &[&'a File], predicate: Predicate) -> Vec<&'a File> {
-    paths
+pub fn filter<'a>(files: &[&'a File], predicate: Predicate) -> Vec<&'a File> {
+    files
         .iter()
         .filter(|entry_ref| {
             let entry: &File = *entry_ref;
@@ -94,7 +212,12 @@ pub fn filter<'a>(paths: &[&'a File], predicate: Predicate) -> Vec<&'a File> {
 mod tests {
     use super::*;
     use crate::file::File;
-    use std::time::{Duration, UNIX_EPOCH};
+    use chrono::{DateTime, Local, TimeZone};
+
+    fn dt(secs: u64) -> DateTime<Local> {
+        // Helper to convert UNIX timestamp to DateTime<Local>
+        Local.timestamp_opt(secs as i64, 0).unwrap()
+    }
 
     fn mock_file(
         name: &str,
@@ -109,9 +232,9 @@ mod tests {
             name: name.to_string(),
             extension: extension.to_string(),
             size,
-            modified: UNIX_EPOCH + Duration::from_secs(modified),
-            accessed: UNIX_EPOCH + Duration::from_secs(accessed),
-            created: UNIX_EPOCH + Duration::from_secs(created),
+            modified: dt(modified),
+            accessed: dt(accessed),
+            created: dt(created),
             file_type: file_type.to_string(),
         }
     }
@@ -149,10 +272,7 @@ mod tests {
         let files = vec![&file1, &file2];
         let result = filter(
             &files,
-            Predicate::Modified(
-                UNIX_EPOCH + Duration::from_secs(15),
-                Comparison::Lt,
-            ),
+            Predicate::Modified(dt(15), Comparison::Lt),
         );
         assert_eq!(result, vec![&file1]);
     }
@@ -164,10 +284,7 @@ mod tests {
         let files = vec![&file1, &file2];
         let result = filter(
             &files,
-            Predicate::Accessed(
-                UNIX_EPOCH + Duration::from_secs(20),
-                Comparison::Eq,
-            ),
+            Predicate::Accessed(dt(20), Comparison::Eq),
         );
         assert_eq!(result, vec![&file2]);
     }
@@ -179,10 +296,7 @@ mod tests {
         let files = vec![&file1, &file2];
         let result = filter(
             &files,
-            Predicate::Created(
-                UNIX_EPOCH + Duration::from_secs(10),
-                Comparison::Ge,
-            ),
+            Predicate::Created(dt(10), Comparison::Ge),
         );
         assert_eq!(result, vec![&file1, &file2]);
     }

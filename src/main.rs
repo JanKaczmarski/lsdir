@@ -1,39 +1,23 @@
-use clap::Parser;
 mod cli;
 mod file;
 mod utilities;
 
-use cli::{Cli, WhereCondition};
+use std::str::FromStr;
+use std::collections::HashMap;
+use std::fs;
+use clap::Parser;
+use cli::Cli;
+
+
 use file::File;
-use std::{collections::HashMap, fs};
-use utilities::aggregate::{ArithmeticAggregator, ComparingAggregator, average, max, min, sum};
 use utilities::filter::{filter, Predicate};
-use utilities::group::{group, GroupingOperator, SizeMagnitude, TimeGrouping};
-use utilities::{AggrFunc, Comparison};
+use utilities::group::{group, GroupingOperator};
+use utilities::aggregate::{AggregateFunction};
+
+use crate::utilities::aggregate::{count, sum, max, min, avg};
 
 fn main() -> std::io::Result<()> {
     let args = Cli::parse();
-
-    // Validate grouping field early - utilities only support certain fields for grouping
-    if let Some(group_field) = &args.group_by {
-        match group_field.to_lowercase().as_str() {
-            "name" => {
-                eprintln!("Error: Grouping by 'name' is not supported by the utilities.");
-                eprintln!(
-                    "Supported grouping fields: extension, file_type, size, modified, accessed, created"
-                );
-                return Ok(());
-            }
-            "extension" | "file_type" | "size" | "modified" | "accessed" | "created" => {} // Valid
-            _ => {
-                eprintln!(
-                    "Error: Invalid grouping field '{}'. Supported fields: extension, file_type, size, modified, accessed, created",
-                    group_field
-                );
-                return Ok(());
-            }
-        }
-    }
 
     // Get directory path (default to current directory)
     let dir_path = args.path.as_deref().unwrap_or(".");
@@ -41,39 +25,47 @@ fn main() -> std::io::Result<()> {
     // Read files from directory
     let files = read_directory(dir_path)?;
 
+    let file_refs: Vec<&File> = files.iter().collect();
+
     // Apply WHERE filter if specified
     let filtered_files = if let Some(where_clause) = &args.r#where {
-        match WhereCondition::parse(where_clause) {
-            Ok(condition) => filter_files(&files, &condition),
+        match Predicate::from_str(where_clause) {
+            Ok(condition) => filter(&file_refs, condition),
             Err(e) => {
                 eprintln!("Error parsing WHERE condition: {}", e);
                 return Ok(());
             }
         }
     } else {
-        files
+        file_refs
+    };
+    let grouped_files = if let Some(group_field) = &args.group_by {
+        match GroupingOperator::from_str(group_field) {
+            Ok(operator) => group(&filtered_files, operator),
+            Err(e) => {
+                eprintln!("Error parsing GROUP BY field: {}", e);
+                return Ok(());
+            }
+        }
+    } else {
+        let mut map = HashMap::new();
+        map.insert(dir_path.to_string(), filtered_files);
+        map
     };
 
-    // Apply grouping and aggregation
-    if let Some(group_field) = &args.group_by {
-        let grouped = group_files(&filtered_files, group_field);
-
-        if grouped.is_empty() {
-            return Ok(());
+    if let Some(aggregate) = &args.aggregate {
+        match AggregateFunction::from_str(aggregate) {
+            Ok(aggregate_function) => {
+               display_aggregated(&grouped_files, aggregate_function); 
+            }
+            Err(e) => {
+                eprintln!("Error parsing aggregate function: {}", e);
+            }
         }
-
-        if let Some(function) = &args.function {
-            apply_aggregation(&grouped, function, &args.params);
-        } else {
-            display_grouped_files(&grouped);
-        }
-    } else if let Some(function) = &args.function {
-        // Apply aggregation without grouping
-        apply_single_aggregation(&filtered_files, function, &args.params);
     } else {
-        // Just list files
-        display_files(&filtered_files);
+        display(&grouped_files);    
     }
+
 
     Ok(())
 }
@@ -90,263 +82,56 @@ fn read_directory(path: &str) -> std::io::Result<Vec<File>> {
     Ok(files)
 }
 
-// Chose only those `files` that match `condition`
-fn filter_files(files: &[File], condition: &WhereCondition) -> Vec<File> {
-    // casting to appropriate datatype
-    let predicate = match condition.field.to_lowercase().as_str() {
-        "name" => Predicate::Name(condition.value.clone()),
-        "extension" => Predicate::Extension(condition.value.clone()),
-        "file_type" => Predicate::FileType(condition.value.clone()),
-        "size" => {
-            if let Ok(size_value) = condition.value.parse::<u64>() {
-                Predicate::Size(size_value, condition.operator.clone())
-            } else {
-                eprintln!("Warning: Invalid size value '{}'", condition.value);
-                return files.to_vec();
-            }
-        }
-        "modified" | "accessed" | "created" => {
-            eprintln!("Warning: Time-based filtering requires time parsing (not implemented yet)");
-            return files.to_vec();
-        }
-        _ => {
-            eprintln!("Warning: Unknown field '{}'", condition.field);
-            return files.to_vec();
-        }
-    };
-    let file_refs: Vec<&File> = files.iter().collect();
-    let filtered_refs = filter(&file_refs, predicate);
-    filtered_refs.into_iter().cloned().collect()
-}
-
-// given some `files` and `group_field` return a HashMap that will have `identifier` and this identifier
-// would be the id that identifies elements in that key-value pair.
-// When grouping by file extension keys would be like: "txt", "py", "rs". And the values would be text files for .txt
-// python files for .py and rust files for .rs
-fn group_files(files: &[File], group_field: &str) -> HashMap<String, Vec<File>> {
-    let grouping_operator = match group_field.to_lowercase().as_str() {
-        "extension" => GroupingOperator::Extension,
-        "file_type" => GroupingOperator::FileType,
-        "size" => GroupingOperator::Size(SizeMagnitude::Bytes),
-        "modified" => GroupingOperator::Modified(TimeGrouping {
-            year: true,
-            month: true,
-            day: false,
-            hour: false,
-            minute: false,
-            second: false,
-        }),
-        "accessed" => GroupingOperator::Accessed(TimeGrouping {
-            year: true,
-            month: true,
-            day: false,
-            hour: false,
-            minute: false,
-            second: false,
-        }),
-        "created" => GroupingOperator::Created(TimeGrouping {
-            year: true,
-            month: true,
-            day: false,
-            hour: false,
-            minute: false,
-            second: false,
-        }),
-        _ => {
-            eprintln!("Warning: Unknown grouping field '{}'", group_field);
-            return HashMap::new();
-        }
-    };
-    let grouped_refs = group(files, grouping_operator);
-    let mut result = HashMap::new();
-    for group in grouped_refs {
-        if let Some(file) = group.first() {
-            // put file to its group, ex. if grouping by extension, this would dump all .txt files into one key,value and .py to other key,value
-            let key = match group_field.to_lowercase().as_str() {
-                "extension" => file.extension.clone(),
-                "file_type" => file.file_type.clone(),
-                "size" => SizeMagnitude::Bytes.convert(file.size),
-                "modified" => TimeGrouping {
-                    year: true,
-                    month: true,
-                    day: false,
-                    hour: false,
-                    minute: false,
-                    second: false,
-                }.format(file.modified),
-                "accessed" => TimeGrouping {
-                    year: true,
-                    month: true,
-                    day: false,
-                    hour: false,
-                    minute: false,
-                    second: false,
-                }.format(file.accessed),
-                "created" => TimeGrouping {
-                    year: true,
-                    month: true,
-                    day: false,
-                    hour: false,
-                    minute: false,
-                    second: false,
-                }.format(file.created),
-                _ => "unknown".to_string(),
-            };
-            let owned_files: Vec<File> = group.into_iter().cloned().collect();
-            result.insert(key, owned_files);
+fn display(files: &HashMap<String, Vec<&File>>) {
+    println!("   {:<19} | {:<19} | {:<19} | {:<10} | {:>10} | {:<30}",
+        "Modified", "Accessed", "Created", "Type", "Size (bytes)", "Name"
+    );
+    for (key, group) in files {
+        println!("{}", key);
+        for file in group {
+            println!("   {}", file);
         }
     }
-    result
+    
 }
 
-fn apply_aggregation(
-    grouped_files: &HashMap<String, Vec<File>>,
-    function: &AggrFunc,
-    params: &[String],
-) {
-    for (group_key, files) in grouped_files {
-        println!("Group: {}", group_key);
-        match function {
-            AggrFunc::Count => {
-                println!("  Count: {}", files.len());
-            }
-            AggrFunc::Sum => {
-                if let Some(param) = params.first() {
-                    if param == "size" {
-                        println!("  Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
-                    } else {
-                        eprintln!("Error: Unsupported parameter '{}' for SUM. Only 'size' is supported.", param);
-                        return;
-                    }
-                } else {
-                    eprintln!("Error: SUM requires a parameter (e.g., 'size').");
-                    return;
-                }
-            }
-            AggrFunc::Avg => {
-                if let Some(param) = params.first() {
-                    if param == "size" {
-                        println!("  Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
-                    } else {
-                        eprintln!("Error: Unsupported parameter '{}' for AVG. Only 'size' is supported.", param);
-                        return;
-                    }
-                } else {
-                    eprintln!("Error: AVG requires a parameter (e.g., 'size').");
-                    return;
-                }
-            }
-            AggrFunc::Min => {
-                if let Some(param) = params.first() {
-                    if param == "size" {
-                        if let Some(f) = min(files, ComparingAggregator::Size) {
-                            println!("  Min Size: {}", f.size);
-                        }
-                    } else {
-                        eprintln!("Error: Unsupported parameter '{}' for MIN. Only 'size' is supported.", param);
-                        return;
-                    }
-                } else {
-                    eprintln!("Error: MIN requires a parameter (e.g., 'size').");
-                    return;
-                }
-            }
-            AggrFunc::Max => {
-                if let Some(param) = params.first() {
-                    if param == "size" {
-                        if let Some(f) = max(files, ComparingAggregator::Size) {
-                            println!("  Max Size: {}", f.size);
-                        }
-                    } else {
-                        eprintln!("Error: Unsupported parameter '{}' for MAX. Only 'size' is supported.", param);
-                        return;
-                    }
-                } else {
-                    eprintln!("Error: MAX requires a parameter (e.g., 'size').");
-                    return;
-                }
+fn display_aggregated(files: &HashMap<String, Vec<&File>>, aggregate_function: AggregateFunction) {
+    match aggregate_function {
+        AggregateFunction::Count => {
+            let aggregated = count(files);
+            for (key, count) in aggregated {
+                println!("Group: {}, Count: {}\n", key, count);
             }
         }
-        println!();
-    }
-}
-
-fn apply_single_aggregation(files: &[File], function: &AggrFunc, params: &[String]) {
-    match function {
-        AggrFunc::Count => {
-            println!("Count: {}", files.len());
-        }
-        AggrFunc::Sum => {
-            if let Some(param) = params.first() {
-                if param == "size" {
-                    println!("Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
-                } else {
-                    eprintln!("Error: Unsupported parameter '{}' for SUM. Only 'size' is supported.", param);
-                    return;
-                }
-            } else {
-                eprintln!("Error: SUM requires a parameter (e.g., 'size').");
-                return;
+        AggregateFunction::Sum(field) => {
+            let aggregated = sum(files, field.clone());
+            for (key, sum) in aggregated {
+                println!("{}, Sum of {}: {}\n", key, field, sum);
             }
         }
-        AggrFunc::Avg => {
-            if let Some(param) = params.first() {
-                if param == "size" {
-                    println!("Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
-                } else {
-                    eprintln!("Error: Unsupported parameter '{}' for AVG. Only 'size' is supported.", param);
-                    return;
-                }
-            } else {
-                eprintln!("Error: AVG requires a parameter (e.g., 'size').");
-                return;
+        AggregateFunction::Max(field) => {
+            println!("{:<19} | {:<19} | {:<19} | {:<10} | {:>10} | {:<30}",
+                "Modified", "Accessed", "Created", "Type", "Size (bytes)", "Name"
+            );
+            let aggregated = max(files, field.clone());
+            for (key, max_value) in aggregated {
+                println!("{}, Max of {}:\n{}\n", key, field, max_value);
             }
         }
-        AggrFunc::Min => {
-            if let Some(param) = params.first() {
-                if param == "size" {
-                    if let Some(f) = min(files, ComparingAggregator::Size) {
-                        println!("Min Size: {}", f.size);
-                    }
-                } else {
-                    eprintln!("Error: Unsupported parameter '{}' for MIN. Only 'size' is supported.", param);
-                    return;
-                }
-            } else {
-                eprintln!("Error: MIN requires a parameter (e.g., 'size').");
-                return;
+        AggregateFunction::Min(field) => {
+            println!("{:<19} | {:<19} | {:<19} | {:<10} | {:>10} | {:<30}",
+                "Modified", "Accessed", "Created", "Type", "Size (bytes)", "Name"
+            );
+            let aggregated = min(files, field.clone());
+            for (key, min_value) in aggregated {
+                println!("{}, Min of {}:\n{}\n", key, field, min_value);
             }
         }
-        AggrFunc::Max => {
-            if let Some(param) = params.first() {
-                if param == "size" {
-                    if let Some(f) = max(files, ComparingAggregator::Size) {
-                        println!("Max Size: {}", f.size);
-                    }
-                } else {
-                    eprintln!("Error: Unsupported parameter '{}' for MAX. Only 'size' is supported.", param);
-                    return;
-                }
-            } else {
-                eprintln!("Error: MAX requires a parameter (e.g., 'size').");
-                return;
+        AggregateFunction::Avg(field) => {
+            let aggregated = avg(files, field.clone());
+            for (key, avg_value) in aggregated {
+                println!("{}, Avg of {}: {}\n", key, field, avg_value);
             }
         }
-    }
-}
-
-fn display_grouped_files(grouped_files: &HashMap<String, Vec<File>>) {
-    for (group_key, files) in grouped_files {
-        println!("Group: {} ({} files)", group_key, files.len());
-        for file in files {
-            println!("  {} ({} bytes)", file.name, file.size);
-        }
-        println!();
-    }
-}
-
-fn display_files(files: &[File]) {
-    for file in files {
-        println!("{} ({} bytes)", file.name, file.size);
     }
 }
