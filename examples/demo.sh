@@ -56,8 +56,8 @@ print_success "Listed all files with their types and sizes"
 
 # Counting
 print_header "2. Count Total Files"
-print_command "$LSDIR examples/showcase --function=count"
-$LSDIR examples/showcase --function=count
+print_command "$LSDIR examples/showcase --aggregate=count"
+$LSDIR examples/showcase --aggregate=count
 print_success "Counted total number of files"
 
 # Size filtering
@@ -86,26 +86,26 @@ print_success "Grouped files by their extensions"
 
 # Count by extension
 print_header "7. Count Files by Extension"
-print_command "$LSDIR examples/showcase --group-by=extension --function=count"
-$LSDIR examples/showcase --group-by=extension --function=count
+print_command "$LSDIR examples/showcase --group-by=extension --aggregate=count"
+$LSDIR examples/showcase --group-by=extension --aggregate=count
 print_success "Counted files grouped by extension"
 
 # Sum sizes by extension
 print_header "8. Total Size by Extension"
-print_command "$LSDIR examples/showcase --group-by=extension --function=sum --params=size"
-$LSDIR examples/showcase --group-by=extension --function=sum --params=size
+print_command "$LSDIR examples/showcase --group-by=extension --aggregate=sum,size"
+$LSDIR examples/showcase --group-by=extension --aggregate=sum,size
 print_success "Calculated total size by extension"
 
 # Average size
 print_header "9. Average File Size"
-print_command "$LSDIR examples/showcase --function=avg --params=size"
-$LSDIR examples/showcase --function=avg --params=size
+print_command "$LSDIR examples/showcase --aggregate=avg,size"
+$LSDIR examples/showcase --aggregate=avg,size
 print_success "Calculated average file size"
 
 # Complex query
 print_header "10. Complex Query: Large Files by Extension"
-print_command "$LSDIR examples/showcase --where=\"size,gt,100\" --group-by=extension --function=count"
-$LSDIR examples/showcase --where="size,gt,100" --group-by=extension --function=count
+print_command "$LSDIR examples/showcase --where=\"size,gt,100\" --group-by=extension --aggregate=count"
+$LSDIR examples/showcase --where="size,gt,100" --group-by=extension --aggregate=count
 print_success "Combined filtering, grouping, and aggregation"
 
 # Wildcard matching
@@ -116,8 +116,8 @@ print_success "Used wildcard patterns for flexible matching"
 
 # Maximum file size
 print_header "12. Find Largest Files by Extension"
-print_command "$LSDIR examples/showcase --group-by=extension --function=max --params=size"
-$LSDIR examples/showcase --group-by=extension --function=max --params=size
+print_command "$LSDIR examples/showcase --group-by=extension --aggregate=max,size"
+$LSDIR examples/showcase --group-by=extension --aggregate=max,size
 print_success "Found largest files in each extension group"
 
 echo -e "\n${GREEN}🎉 Demo Complete!${NC}"
