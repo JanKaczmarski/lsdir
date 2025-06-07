@@ -170,7 +170,7 @@ js (1 files):
 
 ```bash
 # Group by file type (File vs Directory)
-./target/release/lsdir examples/showcase --group-by=file-type
+./target/release/lsdir examples/showcase --group-by=file_type
 ```
 
 **Expected Output:**

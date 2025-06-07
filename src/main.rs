@@ -214,14 +214,26 @@ fn apply_aggregation(
                 if let Some(param) = params.first() {
                     if param == "size" {
                         println!("  Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
+                    } else {
+                        eprintln!("Error: Unsupported parameter '{}' for SUM. Only 'size' is supported.", param);
+                        return;
                     }
+                } else {
+                    eprintln!("Error: SUM requires a parameter (e.g., 'size').");
+                    return;
                 }
             }
             AggrFunc::Avg => {
                 if let Some(param) = params.first() {
                     if param == "size" {
                         println!("  Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
+                    } else {
+                        eprintln!("Error: Unsupported parameter '{}' for AVG. Only 'size' is supported.", param);
+                        return;
                     }
+                } else {
+                    eprintln!("Error: AVG requires a parameter (e.g., 'size').");
+                    return;
                 }
             }
             AggrFunc::Min => {
@@ -230,7 +242,13 @@ fn apply_aggregation(
                         if let Some(f) = min(files, ComparingAggregator::Size) {
                             println!("  Min Size: {}", f.size);
                         }
+                    } else {
+                        eprintln!("Error: Unsupported parameter '{}' for MIN. Only 'size' is supported.", param);
+                        return;
                     }
+                } else {
+                    eprintln!("Error: MIN requires a parameter (e.g., 'size').");
+                    return;
                 }
             }
             AggrFunc::Max => {
@@ -239,7 +257,13 @@ fn apply_aggregation(
                         if let Some(f) = max(files, ComparingAggregator::Size) {
                             println!("  Max Size: {}", f.size);
                         }
+                    } else {
+                        eprintln!("Error: Unsupported parameter '{}' for MAX. Only 'size' is supported.", param);
+                        return;
                     }
+                } else {
+                    eprintln!("Error: MAX requires a parameter (e.g., 'size').");
+                    return;
                 }
             }
         }
@@ -256,14 +280,26 @@ fn apply_single_aggregation(files: &[File], function: &AggrFunc, params: &[Strin
             if let Some(param) = params.first() {
                 if param == "size" {
                     println!("Sum (size): {:.2}", sum(files, ArithmeticAggregator::Size));
+                } else {
+                    eprintln!("Error: Unsupported parameter '{}' for SUM. Only 'size' is supported.", param);
+                    return;
                 }
+            } else {
+                eprintln!("Error: SUM requires a parameter (e.g., 'size').");
+                return;
             }
         }
         AggrFunc::Avg => {
             if let Some(param) = params.first() {
                 if param == "size" {
                     println!("Average (size): {:.2}", average(files, ArithmeticAggregator::Size).unwrap_or(0.0));
+                } else {
+                    eprintln!("Error: Unsupported parameter '{}' for AVG. Only 'size' is supported.", param);
+                    return;
                 }
+            } else {
+                eprintln!("Error: AVG requires a parameter (e.g., 'size').");
+                return;
             }
         }
         AggrFunc::Min => {
@@ -272,7 +308,13 @@ fn apply_single_aggregation(files: &[File], function: &AggrFunc, params: &[Strin
                     if let Some(f) = min(files, ComparingAggregator::Size) {
                         println!("Min Size: {}", f.size);
                     }
+                } else {
+                    eprintln!("Error: Unsupported parameter '{}' for MIN. Only 'size' is supported.", param);
+                    return;
                 }
+            } else {
+                eprintln!("Error: MIN requires a parameter (e.g., 'size').");
+                return;
             }
         }
         AggrFunc::Max => {
@@ -281,7 +323,13 @@ fn apply_single_aggregation(files: &[File], function: &AggrFunc, params: &[Strin
                     if let Some(f) = max(files, ComparingAggregator::Size) {
                         println!("Max Size: {}", f.size);
                     }
+                } else {
+                    eprintln!("Error: Unsupported parameter '{}' for MAX. Only 'size' is supported.", param);
+                    return;
                 }
+            } else {
+                eprintln!("Error: MAX requires a parameter (e.g., 'size').");
+                return;
             }
         }
     }

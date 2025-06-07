@@ -108,7 +108,7 @@ lsdir [OPTIONS] [PATH]
 - `name` - File name
 - `extension` - File extension
 - `size` - File size in bytes
-- `file-type` - File type (File or Directory)
+- `file_type` - File type (File or Directory)
 - `modified` - Last modification time
 - `accessed` - Last access time
 - `created` - Creation time
@@ -168,7 +168,7 @@ lsdir --where="name,eq,test_*"
 
 ```bash
 # Group by file type
-lsdir --group-by=file-type
+lsdir --group-by=file_type
 
 # Group by file extension
 lsdir --group-by=extension
@@ -200,7 +200,7 @@ lsdir --function=min --params=size
 
 ```bash
 # Count files by type, only for large files
-lsdir --group-by=file-type --function=count --where="size,gt,1000"
+lsdir --group-by=file_type --function=count --where="size,gt,1000"
 
 # Sum size by extension for Rust and C files
 lsdir --group-by=extension --function=sum --params=size --where="extension,contains,rs"
